@@ -2,38 +2,38 @@
 
 import imp
 import sys
+import json
 import time
 
 from mpi4py import MPI
 
 from message import *
-from utils import Logger
-from dispatcher import Message
+from utils import Logger, load_module
+
+from mapper import Mapper
 
 class Worker(Logger):
-    def __init__(self, mapfile, reducefile):
+    def __init__(self, fconf):
         super(Worker, self).__init__("Worker")
 
         finished = False
         self.comm = MPI.COMM_WORLD.Get_parent()
 
-        self.mapf    = self.extract_fun(mapfile, 'map')
-        self.reducef = self.extract_fun(reducefile, 'reduce')
+        # Here we also need to handle the configuration file somehow
+        conf = json.load(open(fconf))
+        self.mapper = self.extract_cls(conf['map-module'], 'Mapper')(conf)
+        self.reducer = self.extract_cls(conf['reduce-module'], 'Reducer')(conf)
 
         while not finished:
             self.comm.send(Message(MSG_AVAILABLE, None), dest=0)
             msg = self.comm.recv()
 
             if msg.command == MSG_COMPUTE_MAP:
-                key, value = msg.result
-                result = self.mapf(key, value)
-
+                result = self.mapper.execute(msg.result)
                 self.comm.send(Message(MSG_FINISHED, result), dest=0)
 
             elif msg.command == MSG_COMPUTE_REDUCE:
-                key, list = msg.result
-                result = self.reducef(key, list)
-
+                result = self.reducer.execute(msg.result)
                 self.comm.send(Message(MSG_FINISHED, result), dest=0)
 
             elif msg.command == MSG_SLEEP:
@@ -45,10 +45,9 @@ class Worker(Logger):
 
         self.comm.Barrier()
 
-    def extract_fun(self, mname, fname):
-        mfile, mpath, mdesc = imp.find_module(mname)
-        module = imp.load_module(mname, mfile, mpath, mdesc)
+    def extract_cls(self, mname, fname):
+        module = load_module(mname)
         return getattr(module, fname)
 
 if __name__ == "__main__":
-    Worker(sys.argv[1], sys.argv[2])
+    Worker(sys.argv[1])

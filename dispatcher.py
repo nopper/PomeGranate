@@ -33,18 +33,22 @@ class WorkDispatcher(object):
     """
     STAGE_MAP    = 0
     STAGE_REDUCE = 1
-    STAGE_END    = 2
+    STAGE_SLEEP  = 2
+    STAGE_END    = 3
 
     def __init__(self, generator):
-        self.remaining_maps = 0
         self.generator = generator
+        self.remaining_map = self.generator.next()
+        self.num_reducer = 0
+
         self.partial = []
         self.stage = WorkDispatcher.STAGE_MAP
 
     def finished(self):
-        return self.generator is None and \
-               not self.partial and \
-               self.remaining_maps == 0
+        return self.generator is None and   \
+               self.remaining_map == 0 and \
+               self.num_reducer == 0 and   \
+               not self.partial
 
     def push_work(self, work):
         """
@@ -62,9 +66,18 @@ class WorkDispatcher(object):
         if work.type == TYPE_MAP:
             # Try to prioritize the faulty map
             self.partial.insert(0, work)
-            self.remaining_maps += 1
+            self.remaining_map += 1
         else:
             self.partial.append(work)
+
+    def map_finished(self):
+        self.remaining_map -= 1
+
+        if self.remaining_map == 0:
+            self.stage = WorkDispatcher.STAGE_REDUCE
+
+    def reduce_finished(self):
+        self.num_reducer -= 1
 
     def pop_work(self):
         """
@@ -76,12 +89,18 @@ class WorkDispatcher(object):
         if self.stage == WorkDispatcher.STAGE_MAP:
             try:
                 data = self.generator.next()
-                self.remaining_maps += 1
-
                 return WorkerStatus(TYPE_MAP, data)
             except StopIteration:
                 self.generator = None
-                self.stage = WorkDispatcher.STAGE_REDUCE
+
+                # This is an implicit barrier
+                if self.remaining_map > 0:
+                    self.stage = WorkDispatcher.STAGE_SLEEP
+                else:
+                    self.stage = WorkDispatcher.STAGE_REDUCE
+
+        elif self.stage == WorkDispatcher.STAGE_SLEEP:
+            return WorkerStatus(TYPE_DUMMY, 1)
 
         elif self.stage == WorkDispatcher.STAGE_REDUCE:
             if len(self.partial) == 0:
@@ -89,11 +108,7 @@ class WorkDispatcher(object):
                 if not self.finished():
                     return WorkerStatus(TYPE_DUMMY, 1)
                 else:
-                    #self.stage = WorkDispatcher.STAGE_END
                     return None
 
-            self.remaining_maps -= 1
+            self.num_reducer += 1
             return self.partial.pop(0)
-
-        #elif self.stage == WorkDispatcher.STAGE_END:
-        #    return None

@@ -1,3 +1,5 @@
+import imp
+import sys
 import socket
 
 import logging
@@ -28,3 +30,18 @@ class Logger(object):
 
     def error(self, str):
         self.logger.error(str, extra=self.extra)
+
+def load_module(mod):
+    """
+    Load a module regardless of the hierarchal specification.
+    It can load modules specified as 'mod1.mod2.module'
+    """
+    path = sys.path
+
+    for mname in mod.split('.'):
+        mfile, mpath, mdesc = imp.find_module(mname, path)
+        module = imp.load_module(mname, mfile, mpath, mdesc)
+        path = getattr(module, '__path__', '')
+
+    return module
+

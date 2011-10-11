@@ -5,7 +5,7 @@ import json
 from mpi4py import MPI
 
 from mux import Muxer
-from utils import Logger
+from utils import Logger, load_module
 from message import *
 from dispatcher import *
 
@@ -14,15 +14,17 @@ class Master(Logger):
     def __init__(self, fconf):
         super(Master, self).__init__("Master")
 
-        self.comm = MPI.COMM_WORLD
+        self.fconf = fconf
         self.conf = json.load(open(fconf))
-        self.n_machines = self.count_machines()
+
+        self.comm = MPI.COMM_WORLD
+        self.n_machines = self.__count_machines()
 
         self.communicators = Muxer()
 
         self.info("We have %d available slots" % (self.n_machines))
 
-    def count_machines(self):
+    def __count_machines(self):
         """
         Read the number of MPI slots that we can possibly use
         @return an integer indicating the number of available MPI slots
@@ -44,7 +46,10 @@ class Master(Logger):
 
         return count
 
-    def main_loop(self):
+    def run(self):
+        self.__main_loop()
+
+    def __main_loop(self):
         # Try to find the number of processing element trying to maximize it
         num_machines = min(self.n_machines,
                            max(self.conf['num-mapper'],
@@ -52,49 +57,44 @@ class Master(Logger):
 
         self.info("We will use %d slots" % (num_machines))
 
-        mname = self.conf['input-module']
-        mfile, mpath, mdesc = imp.find_module(mname)
-        module = imp.load_module(mname, mfile, mpath, mdesc)
-
-        mapfile = self.conf['map-module']
-        reducefile = self.conf['reduce-module']
-
         for i in range(num_machines):
             comm = MPI.COMM_SELF.Spawn(sys.executable,
-                                       args=["worker.py", mapfile, reducefile],
+                                       args=["worker.py", self.fconf],
                                        maxprocs=1)
             #comm.Set_errhandler()
             self.communicators.add_channel(comm)
 
-        # Let's create a generator to keep track of the inputs key,value and an
-        # array to keep track of the state of each worker in case of faults, in
-        # order to be able to spawn a replica.
         self.worker_status = [None, ] * num_machines
-        self.dispatcher = WorkDispatcher(module.input())
-        self.num_reducers = 0
+        self.dispatcher = WorkDispatcher(self.input())
 
-        #finished = False
-
-        # Lazy evaluation of the any therefore no problem.
-        while self.num_reducers > 0 or not self.dispatcher.finished():
+        while not self.dispatcher.finished():
             idx, comm = self.communicators.receive()
 
-            # TODO :error .. remember to reduce reducers
             msg = comm.recv()
+            # TODO :error .. remember to reduce reducers
+            # In case we have a failure we have to decrement the number of
+            # reducer otherwise is counted twice. Probably the same applies for
+            # map
 
             if msg.command == MSG_AVAILABLE:
-                finished = self.assign_work(idx, comm)
+                finished = self.__assign_work(idx, comm)
 
             elif msg.command == MSG_FINISHED:
                 # In this case the map has finished computing, therefore we
                 # have to put the result in the "job queue" of the dispatcher.
                 if self.worker_status[idx].type == TYPE_MAP:
-                    new_status = WorkerStatus(TYPE_REDUCE, msg.result)
-                    self.dispatcher.push_work(new_status)
+                    ret = self.on_map_finished(msg.result)
+
+                    if ret is not None:
+                        self.dispatcher.push_work(
+                            WorkerStatus(TYPE_REDUCE, ret)
+                        )
+
+                    self.dispatcher.map_finished()
 
                 elif self.worker_status[idx].type == TYPE_REDUCE:
-                    self.info("Final result %s" % str(msg.result))
-                    self.num_reducers -= 1
+                    self.on_reduce_finished(msg)
+                    self.dispatcher.reduce_finished()
 
                 self.worker_status[idx] = None
 
@@ -104,7 +104,7 @@ class Master(Logger):
 
         self.info("Waiting on the final barrier")
 
-    def assign_work(self, idx, comm):
+    def __assign_work(self, idx, comm):
         """
         Assign a job to a generic worker
         """
@@ -120,21 +120,29 @@ class Master(Logger):
             msg = MSG_COMPUTE_MAP
         elif wstatus.type == TYPE_REDUCE:
             msg = MSG_COMPUTE_REDUCE
-            self.num_reducers += 1
         elif wstatus.type == TYPE_DUMMY:
             msg = MSG_SLEEP
 
         comm.send(Message(msg, wstatus.state), dest=0)
         return False
 
+    #
+    # Public function that can be overriden
+    #
 
+    def on_map_finished(self, msg):
+        new_status = WorkerStatus(TYPE_REDUCE, msg.result)
 
+    def on_reduce_finished(self, msg):
+        self.info("Final result %s" % str(msg.result))
 
-if __name__ == "__main__":
+    def input(self):
+        raise Exception("Not implemented")
+
+def start_mapreduce(mcls):
     if len(sys.argv) != 2:
         print("Usage: %s <conf-file>" % (sys.argv[0]))
         sys.exit(-1)
 
     if MPI.COMM_WORLD.Get_rank() == 0:
-        master = Master(sys.argv[1])
-        master.main_loop()
+        mcls(sys.argv[1]).run()
