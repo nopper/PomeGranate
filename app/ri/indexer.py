@@ -13,8 +13,6 @@ class MasterRI(Master):
     def input(self):
         files = os.listdir(self.input_path)
 
-        yield(len(files))
-
         for id, file in enumerate(files):
             yield(os.path.join(self.input_path, file), id)
 

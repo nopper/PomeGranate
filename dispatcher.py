@@ -38,16 +38,18 @@ class WorkDispatcher(object):
 
     def __init__(self, generator):
         self.generator = generator
-        self.remaining_map = self.generator.next()
+
+        self.num_map = 0
         self.num_reducer = 0
 
         self.partial = []
         self.stage = WorkDispatcher.STAGE_MAP
 
     def finished(self):
-        return self.generator is None and   \
-               self.remaining_map == 0 and \
-               self.num_reducer == 0 and   \
+        return self.stage == WorkDispatcher.STAGE_REDUCE and \
+               self.generator is None and                    \
+               self.num_map == 0 and                         \
+               self.num_reducer == 0 and                     \
                not self.partial
 
     def push_work(self, work):
@@ -66,14 +68,16 @@ class WorkDispatcher(object):
         if work.type == TYPE_MAP:
             # Try to prioritize the faulty map
             self.partial.insert(0, work)
-            self.remaining_map += 1
+            # FIXME: In verita' data la barriera implicita tra map e reduce
+            # questo non significa dare priorita' alla map.
+            self.num_map += 1
         else:
             self.partial.append(work)
 
     def map_finished(self):
-        self.remaining_map -= 1
+        self.num_map -= 1
 
-        if self.remaining_map == 0:
+        if self.num_map == 0 and self.stage == WorkDispatcher.STAGE_SLEEP:
             self.stage = WorkDispatcher.STAGE_REDUCE
 
     def reduce_finished(self):
@@ -89,15 +93,11 @@ class WorkDispatcher(object):
         if self.stage == WorkDispatcher.STAGE_MAP:
             try:
                 data = self.generator.next()
+                self.num_map += 1
                 return WorkerStatus(TYPE_MAP, data)
             except StopIteration:
                 self.generator = None
-
-                # This is an implicit barrier
-                if self.remaining_map > 0:
-                    self.stage = WorkDispatcher.STAGE_SLEEP
-                else:
-                    self.stage = WorkDispatcher.STAGE_REDUCE
+                self.stage = WorkDispatcher.STAGE_SLEEP
 
         elif self.stage == WorkDispatcher.STAGE_SLEEP:
             return WorkerStatus(TYPE_DUMMY, 1)
