@@ -6,6 +6,8 @@ TYPE_MAP    = 0
 TYPE_REDUCE = 1
 TYPE_DUMMY  = 2
 
+from utils import Logger
+
 class WorkerStatus(object):
     """
     Simple placeholder class to have a more readable code.
@@ -25,7 +27,7 @@ class WorkerStatus(object):
     def __repr__(self):
         return str(self)
 
-class WorkDispatcher(object):
+class WorkDispatcher(Logger):
     """
     The class holds both a generator generating <key,value> pairs from the
     input-module function and keep also track of the work that the reducers
@@ -37,6 +39,8 @@ class WorkDispatcher(object):
     STAGE_END    = 3
 
     def __init__(self, generator):
+        super(WorkDispatcher, self).__init__("WorkDispatcher")
+
         self.generator = generator
 
         self.num_map = 0
@@ -50,7 +54,7 @@ class WorkDispatcher(object):
                self.generator is None and                    \
                self.num_map == 0 and                         \
                self.num_reducer == 0 and                     \
-               not self.partial
+               len(self.partial) == 0
 
     def push_work(self, work):
         """
@@ -65,6 +69,8 @@ class WorkDispatcher(object):
         @param work a WorkerStatus instance
         """
 
+        self.debug("Adding a new work to the queue %s" % str(work))
+
         if work.type == TYPE_MAP:
             # Try to prioritize the faulty map
             self.partial.insert(0, work)
@@ -76,9 +82,6 @@ class WorkDispatcher(object):
 
     def map_finished(self):
         self.num_map -= 1
-
-        if self.num_map == 0 and self.stage == WorkDispatcher.STAGE_SLEEP:
-            self.stage = WorkDispatcher.STAGE_REDUCE
 
     def reduce_finished(self):
         self.num_reducer -= 1
@@ -98,8 +101,12 @@ class WorkDispatcher(object):
             except StopIteration:
                 self.generator = None
                 self.stage = WorkDispatcher.STAGE_SLEEP
+                return WorkerStatus(TYPE_DUMMY, 1)
 
         elif self.stage == WorkDispatcher.STAGE_SLEEP:
+            if self.num_map == 0:
+                self.stage = WorkDispatcher.STAGE_REDUCE
+
             return WorkerStatus(TYPE_DUMMY, 1)
 
         elif self.stage == WorkDispatcher.STAGE_REDUCE:

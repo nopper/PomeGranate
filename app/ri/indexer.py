@@ -13,10 +13,11 @@ class MasterRI(Master):
     def input(self):
         files = os.listdir(self.input_path)
 
-        for id, file in enumerate(files):
+        for id, file in enumerate(sorted(files)):
             yield(os.path.join(self.input_path, file), id)
 
     def on_map_finished(self, msg):
+        # Here we are pushing self.num_reducer reducer tasks
         self.num_reducer -= 1
 
         if self.num_reducer >= 0:

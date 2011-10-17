@@ -77,6 +77,7 @@ class Master(Logger):
             # map
 
             if msg.command == MSG_AVAILABLE:
+                self.debug("Worker %d is available for a new task" % idx)
                 finished = self.__assign_work(idx, comm)
 
             elif msg.command == MSG_FINISHED:
@@ -122,6 +123,8 @@ class Master(Logger):
             msg = MSG_COMPUTE_REDUCE
         elif wstatus.type == TYPE_DUMMY:
             msg = MSG_SLEEP
+
+        self.debug("Assigning %s as role to worker %d" % (MSG_TO_STR[msg], idx))
 
         comm.send(Message(msg, wstatus.state), dest=0)
         return False

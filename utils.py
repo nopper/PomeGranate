@@ -45,3 +45,17 @@ def load_module(mod):
 
     return module
 
+from tempfile import NamedTemporaryFile
+
+def create_file(directory, reducer, prefix="map", cont=0, delete=False):
+    """
+    Utility function to create a unique named temporary file
+    @param directory the output directory in which the file will be created
+    @param reducer the reducer number
+    @param cont an integer representing the continuation id
+    @param delete if you wish to delete the file after .close()
+    @return a file object
+    """
+    fname = "{:s}-r{:06d}-p{:06d}-".format(prefix, reducer, cont)
+    return NamedTemporaryFile(prefix=fname, dir=directory, delete=delete)
+
