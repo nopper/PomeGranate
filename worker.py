@@ -25,16 +25,22 @@ class Worker(Logger):
         self.reducer = self.extract_cls(conf['reduce-module'], 'Reducer')(conf)
 
         while not finished:
-            self.comm.send(Message(MSG_AVAILABLE, None), dest=0)
+            self.comm.send(Message(MSG_AVAILABLE, 0, None), dest=0)
             msg = self.comm.recv()
 
             if msg.command == MSG_COMPUTE_MAP:
                 result = self.mapper.execute(msg.result)
-                self.comm.send(Message(MSG_FINISHED, result), dest=0)
+                self.comm.send(
+                    Message(MSG_FINISHED_MAP, msg.tag, result),
+                    dest=0
+                )
 
             elif msg.command == MSG_COMPUTE_REDUCE:
                 result = self.reducer.execute(msg.result)
-                self.comm.send(Message(MSG_FINISHED, result), dest=0)
+                self.comm.send(
+                    Message(MSG_FINISHED_REDUCE, msg.tag, result),
+                    dest=0
+                )
 
             elif msg.command == MSG_SLEEP:
                 time.sleep(msg.result)
