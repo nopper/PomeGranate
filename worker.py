@@ -37,6 +37,7 @@ class Worker(Logger):
 
             elif msg.command == MSG_COMPUTE_REDUCE:
                 result = self.reducer.execute(msg.result)
+                # TODO: sistema
                 self.comm.send(
                     Message(MSG_FINISHED_REDUCE, msg.tag, result),
                     dest=0
@@ -48,8 +49,6 @@ class Worker(Logger):
             elif msg.command == MSG_QUIT:
                 finished = True
                 #self.info("Finished")
-
-        self.comm.Barrier()
 
     def extract_cls(self, mname, fname):
         module = load_module(mname)

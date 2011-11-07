@@ -1,13 +1,20 @@
+import os
 import imp
 import sys
 import socket
 
 import logging
+import tempfile
 import logging.config
+
+from mpi4py import MPI
 
 logging.config.fileConfig('logconfig.ini')
 
-from mpi4py import MPI
+class RandomNameIntegerSequence(tempfile._RandomNameSequence):
+    characters = ("123456789")
+
+tempfile._name_sequence = RandomNameIntegerSequence()
 
 class Logger(object):
     def __init__(self, name):
@@ -45,17 +52,45 @@ def load_module(mod):
 
     return module
 
-from tempfile import NamedTemporaryFile
 
-def create_file(directory, reducer, prefix="map", cont=0, delete=False):
+def create_file(directory, reducer, prefix="map", delete=False):
     """
     Utility function to create a unique named temporary file
     @param directory the output directory in which the file will be created
     @param reducer the reducer number
-    @param cont an integer representing the continuation id
     @param delete if you wish to delete the file after .close()
     @return a file object
     """
-    fname = "{:s}-r{:06d}-p{:06d}-".format(prefix, reducer, cont)
-    return NamedTemporaryFile(prefix=fname, dir=directory, delete=delete)
+    # TODO: dropa la parte randomica e piazza un randomismo su interi. Sarebbe
+    # meglio un range continuativo
+    fname = "{:s}-r{:06d}-p".format(prefix, reducer)
+    return tempfile.NamedTemporaryFile(prefix=fname, dir=directory, delete=delete)
 
+def get_id(fname):
+    return int(os.path.basename(fname).split('-', 3)[2][1:])
+
+def get_file_name(path, reduce_idx, fid):
+    return os.path.join(path, "map-r{:06d}-p{:d}".format(reduce_idx, fid))
+
+def count_machines(fname):
+    """
+    Read the number of MPI slots that we can possibly use
+    @param fname the machine file file name
+    @return an integer indicating the number of available MPI slots
+    """
+    count = 0
+
+    for line in open(fname).readlines():
+        line = line.strip()
+
+        if line[0] == '#':
+            continue
+
+        try:
+            # Extract the number from a string like
+            # host.domain:2
+            count += int(line.rsplit(':', 1)[1])
+        except Exception, exc:
+            count += 1
+
+        return count

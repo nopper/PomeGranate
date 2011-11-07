@@ -1,3 +1,4 @@
+import os
 import glob
 import json
 import os.path
@@ -5,49 +6,32 @@ import contextlib
 import mmap
 import struct
 
-from utils import Logger, create_file
+from utils import Logger, create_file, get_id
 from heapq import heappush, heappop, merge
 
-class KeyValueReader(Logger):
-    def __init__(self, fname, delete=False, converter=None):
-        """
-        Create a KeyValueReader instance an object cabable of reading
-        <key,value> pairs from an input file.
-
-        The default converter just reads line in the form 'key value\\n'
-
-        @param fname the path of the file containing k,v
-        @param delete a boolean indicating whether to delete the file after the
-                      scan
-        @param converter a function for converting a line input into k,v pairs
-        """
-        super(KeyValueReader, self).__init__("KeyValueReader")
-
+class ReduceReader(Logger):
+    def __init__(self, fname):
+        super(ReduceReader, self).__init__("ReduceReader")
         self.path = fname
-        self.delete = delete
-        self.converter = converter or KeyValueReader.conv_key_value
-
-    @staticmethod
-    def conv_key_value(line):
-        return line.split(' ', 1)
 
     def iterate(self):
         with open(self.path, 'r') as f:
             with contextlib.closing(mmap.mmap(f.fileno(), 0,
                                     access=mmap.ACCESS_READ)) as m:
-                line = m.readline()
 
-                while line:
-                    yield (self.converter(line.strip()))
-                    line = m.readline()
+                fsize = m.size()
 
-        if self.delete:
-            log.info("Removing file %s" % self.path)
-            os.unlink(self.path)
+                while m.tell() < fsize:
+                    termlen = struct.unpack("I", m.read(4))[0]
+                    term = struct.unpack("%ds" % (termlen), m.read(termlen))[0]
+                    num_tuples = struct.unpack("I", m.read(4))[0]
 
-def convert_line(line):
-    word, docid, occ = line.split(' ', 2)
-    return (word, int(docid), int(occ))
+                    for _ in range(num_tuples):
+                        str = m.read(8)
+                        docid, occ = struct.unpack("II", str)
+                        yield (term, docid, occ)
+
+                    m.read(1)
 
 class ReducerRI(Logger):
     def __init__(self, conf):
@@ -55,17 +39,13 @@ class ReducerRI(Logger):
 
         self.input_path = conf["map-output"]
 
-    def reduce(self, files):
+    def reduce(self, reduce_idx, files):
         handles = []
 
         self.info("Reducing %s" % (str(files)))
 
         for fname in files:
-            reader = KeyValueReader(
-                os.path.join(self.input_path, fname),
-                converter=convert_line
-            )
-
+            reader = ReduceReader(os.path.join(self.input_path, fname))
             handles.append(reader.iterate())
 
         # In the case we are reading from two different files something like:
@@ -73,7 +53,7 @@ class ReducerRI(Logger):
         # file2 -> hello 1 2
         # --> hello 1 5
 
-        handle = create_file(self.input_path, 0, "output")
+        handle = create_file(self.input_path, reduce_idx, "output")
 
         prev_word = None
         prev_docid = -1
@@ -123,14 +103,31 @@ class ReducerRI(Logger):
                 num_docs = 1
 
         handle.close()
+        return (get_id(handle.name), os.stat(handle.name).st_size)
 
-    def execute(self, idx):
-        expr = os.path.join(self.input_path, "map-r{:06d}-*".format(idx))
-        self.reduce(glob.glob(expr))
+    def execute(self, files):
+        reduce_idx = files[0]
+        files      = set(files[1])
 
-        self.info("Reduce finished")
+        inputs = []
+        results = []
+        expr = os.path.join(self.input_path, "map-r{:06d}-*".format(reduce_idx))
 
-        return 1
+        for fname in glob.glob(expr):
+            # TODO: usa get_id?
+            fid = int(os.path.basename(fname).split("-", 3)[2][1:])
+
+            print "Reducing for %d: checking if %s is inside %s" % (reduce_idx, fname, str(files))
+
+            if fid in files:
+                files.remove(fid)
+                inputs.append(fname)
+                results.append(fid)
+
+        results.insert(0, self.reduce(reduce_idx, inputs))
+        self.info("Reduce finished. Result is %s" % str(results))
+
+        return results
 
 # Reduce logaritmico
 # Nel caso in cui il limite di file per processo venga superato sarebbe

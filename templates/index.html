@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block script %}
+<script src="http://ajax.googleapis.com/ajax/libs/dojo/1.6/dojo/dojo.xd.js" djConfig="parseOnLoad: true"></script>
+<script type="text/javascript">
+    dojo.require("dijit.form.Button");
+    dojo.require("dijit.form.Slider");
+    dojo.require("dijit.form.TextBox");
+    dojo.require("dijit.Dialog");
+    dojo.require("dojox.html.entities");
+
+    var Poll = function(pollFunction, intervalTime) {
+        var intervalId = null;
+
+        this.start = function(newPollFunction, newIntervalTime) {
+            pollFunction = newPollFunction || pollFunction;
+            intervalTime = newIntervalTime || intervalTime;
+
+            if ( intervalId ) {
+                this.stop();
+            }
+
+            intervalId = setInterval(pollFunction, intervalTime);
+        };
+
+        this.stop = function() {
+            clearInterval(intervalId);
+        };
+    };
+
+    var poller = null;
+    var degreeDlg = null;
+    var currentNick = null;
+
+    function toggleUpdate() {
+        if (poller == null) return false;
+
+        if (dojo.byId("sync-chk").checked == false)
+            poller.stop();
+        else
+            poller.start();
+
+        return false;
+    }
+
+    function editNode(nick) {
+        currentNick = nick;
+        degreeDlg = dijit.byId("dialog");
+        degreeDlg.attr('style', '');
+        degreeDlg.attr('title', "Editing " + nick);
+        degreeDlg.show();
+        return false;
+    }
+
+    function closeDialog() {
+        if (degreeDlg != null)
+          degreeDlg.hide();
+        currentNick = null;
+    }
+
+    function changeParDegree() {
+        if (degreeDlg == null || currentNick == null)
+            return false;
+
+        var value = parseInt(dojo.byId("sliderValue").value, 10);
+        if (isNaN(value)) {
+            alert("Please use an integer value");
+            return false;
+        }
+
+        var message = {"type": "change-degree", "nick": currentNick, "data": value}
+        var xhrArgs = {
+            url: "/",
+            postData: dojo.toJson(message),
+            handleAs: "json",
+            headers: { "Content-Type": "application/json"},
+            error: function(error) {
+                alert("Error: " + error);
+            }
+        };
+
+        dojo.xhrPost(xhrArgs);
+        closeDialog();
+        return false;
+    }
+
+    dojo.addOnLoad(function() {
+        var slider = new dijit.form.HorizontalSlider({
+            name: "slider",
+            value: 0,
+            minimum: -10,
+            maximum: 10,
+            discreteValues: 21,
+            intermediateChanges: true,
+            style: "width: 220px;",
+            onChange: function(value) {
+                dojo.byId("sliderValue").value = value;
+            }
+        },
+        "slider");
+
+        var xhrArgs = {
+            url: "/status",
+            handleAs: "json",
+            load: function(data) {
+                dojo.html.set(dojo.byId("lastupdate"), '<span class="label">Last update on ' + Date() + '</span>');
+                dojo.html.set(dojo.byId("inputs-body"),
+                           "<tr><td>"  + data['map_assigned'] +
+                           "</td><td>" + data['reduce_assigned'] +
+                           "</td><td>" + data['map_completed'] +
+                           "</td><td>" + data['reduce_completed'] +
+                           "</td><td>" + data['map_faulted'] +
+                           "</td><td>" + data['reduce_faulted'] +
+                           "</td><td>" + (data['map_assigned'] + data['reduce_assigned']) +
+                           "</td><td>" + (data['map_completed'] + data['reduce_completed']) +
+                           "</td><td>" + (data['map_faulted'] + data['reduce_faulted']) + "</td></tr>");
+
+                dojo.html.set(dojo.byId("applog"), dojox.html.entities.encode(data['lastlog'].join('\n')));
+
+                var html = '';
+                var masters = data['masters'];
+
+                for (nick in masters) {
+                    var state = masters[nick];
+
+                    var finished = state['finished'][0] + '/' +
+                                   state['finished'][1] + '/' +
+                                   (state['finished'][0] + state['finished'][1]);
+
+                    var ongoing = state['ongoing'][0] + '/' +
+                                  state['ongoing'][1] + '/' +
+                                  (state['ongoing'][0] + state['ongoing'][1]);
+
+                    var files = state['files'];
+
+                    var nfiles = files[0][0] + '/' +
+                                 files[0][1] + '/' +
+                                 (files[0][0] + files[0][1]);
+                    var sizes = (files[1][0] / (1024.0 * 1024.0)).toFixed(2) + '/' +
+                                (files[1][1] / (1024.0 * 1024.0)).toFixed(2) + '/' +
+                                ((files[1][0] + files[1][1]) / (1024.0 * 1024.0)).toFixed(2);
+
+                    var status = '';
+
+                    if (state['status'] == 'online')
+                        status = '<span class="label success">online</span>';
+                    else if (state['status'] == 'dead')
+                        status = '<span class="label error">dead</span>';
+
+                    var row = "<tr><td><code><a href=\"#\" onclick=\"editNode('" + nick + "')\">" + nick +
+                               "</a></code></td><td>" + state['rtt'] + "</td><td>" +
+                               state['proc'] + "</td><td>" + finished + "</td><td>" +
+                               ongoing + "</td><td>" + nfiles + " files, " + sizes + " MBs</td><td>" + status + "</td></tr>";
+
+                    html += row;
+                }
+
+                dojo.html.set(dojo.byId('status-body'), html);
+            }
+        };
+
+        poller = new Poll(function() { dojo.xhrGet(xhrArgs); }, 5000);
+        dojo.byId('sync-chk').disabled = false;
+        poller.start();
+    });
+</script>
+<link rel="stylesheet" type="text/css" href="http://ajax.googleapis.com/ajax/libs/dojo/1.6/dijit/themes/tundra/tundra.css"/>
+{% endblock %}
+
+{% block main %}
+<div class="tundra span8" id="dialog" dojoType="dijit.Dialog" title="Parallelism degree change" style="display: none;">
+  <form>
+    <h3>Parallelism degree change</h3>
+    <p style="text-align: justify;">Through this dialog you can dynamically change the number of MPI processess allocated on a given master.</p>
+    <p style="font-style: italic; font-size: 8pt; text-align: justify;">Please note that this is a delta number therefore specifying a positive number will increase the number of MPI processes allocated to that specific master.
+On the contrary a negative number will tell to the master to remove redundant workers from its pool.</p>
+    </p>
+    <fieldset>
+      <div class="clearfix">
+        <label>MPI proc</label>
+        <div class="input" style="width: 150px;">
+          <input type="text" id="sliderValue" name="nproc" size="4" value="0"/>
+        </div>
+      </div>
+      <div class="clearfix">
+        <label></label>
+        <div class="input">
+          <div id="slider"></div>
+        </div>
+      </div>
+    </fieldset>
+  </form>
+  <div class="actions" style="background: none;">
+    <a href="#" class="btn small primary" onclick="changeParDegree();">Commit changes</a>
+    <a href="#" class="btn small" onclick="closeDialog();">Cancel</a>
+  </div>
+</div>
+
+<div class="span14">
+<div style="margin-bottom: 30px;">
+    <input type="checkbox" name="auto-sync" id="sync-chk" value="option" checked="1" onclick="toggleUpdate();" disabled="true">
+    <span>Automatically update the view every 5 seconds</span>
+    <div id="lastupdate"></div>
+</div>
+
+  <h2>Registered masters</h2>
+  <table class="zebra-striped">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Ping</th>
+        <th># Proc</th>
+        <th>Finished (M/R/T)</th>
+        <th>On going (M/R/T)</th>
+        <th>Processed (M/R/T)</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="status-body">
+      {% for name, rtt, proc, finished, ongoing, files, status in status.get_masters() %}
+      <tr>
+        <td><code><a href="#" onclick="editNode('{{ name }}');">{{ name }}</a></code></td>
+        <td>>{{ rtt }}</td>
+        <td>{{ proc }}</td>
+        <td>{{ finished }}</td>
+        <td>{{ ongoing }}</td>
+        <td>{{ files }}</td>
+        <td><span class="label success">{{ status }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Overview</h2>
+  <table class="zebra-striped">
+    <thead>
+      <tr>
+        <th>Percentage</th>
+        <th>Phase</th>
+        <th>Map</th>
+        <th>Reduce</th>
+        <th>Total</th>
+        <th>Processes</th>
+        <th>ETA</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{{ status.get_percentage() }}</td>
+        <td>{{ status.get_phase() }}</td>
+        <td>{{ status.map_file }} files, {{ status.map_file_size }} MBs</td>
+        <td>{{ status.reduce_file }} files, {{ status.reduce_file_size }} MBs</td>
+        <td>{{ status.map_file + status.reduce_file }} files, {{ status.map_file_size + status.reduce_file_size }} MBs</td>
+        <td>{{ status.get_processes() }}</td>
+        <td>{{ status.get_eta() }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Inputs</h2>
+  <table class="zebra-striped">
+    <thead>
+      <tr>
+        <th>Map assigned</th>
+        <th>Reduce assigned</th>
+        <th>Map completed</th>
+        <th>Reduce completed</th>
+        <th>Map faulted</th>
+        <th>Reduce faulted</th>
+        <th>Total assigned</th>
+        <th>Total completed</th>
+        <th>Total faulted</th>
+      </tr>
+    </thead>
+    <tbody id="inputs-body">
+      <tr>
+        <td>{{ status.map_assigned }}</td>
+        <td>{{ status.reduce_assigned }}</td>
+        <td>{{ status.map_completed }}</td>
+        <td>{{ status.reduce_completed }}</td>
+        <td>{{ status.map_faulted }}</td>
+        <td>{{ status.reduce_faulted }}</td>
+        <td>{{ status.map_assigned + status.reduce_assigned }}</td>
+        <td>{{ status.map_completed + status.reduce_completed }}</td>
+        <td>{{ status.map_faulted + status.reduce_faulted }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Application Log</h2>
+  <textarea rows="20" readonly="true" class="span14" id="applog">
+{% for msg in status.get_last_messages() %}{{ msg }}
+{% endfor %}
+  </textarea>
+</div>
+{% endblock %}
