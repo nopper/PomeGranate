@@ -64,7 +64,7 @@ def create_file(directory, reducer, prefix="map", delete=False):
     # TODO: dropa la parte randomica e piazza un randomismo su interi. Sarebbe
     # meglio un range continuativo
     fname = "{:s}-r{:06d}-p".format(prefix, reducer)
-    return tempfile.NamedTemporaryFile(prefix=fname, dir=directory, delete=delete)
+    return tempfile.NamedTemporaryFile(prefix=fname, bufsize=1048576, dir=directory, delete=delete)
 
 def get_id(fname):
     return int(os.path.basename(fname).split('-', 3)[2][1:])

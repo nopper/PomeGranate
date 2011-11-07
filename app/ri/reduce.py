@@ -15,7 +15,7 @@ class ReduceReader(Logger):
         self.path = fname
 
     def iterate(self):
-        with open(self.path, 'r') as f:
+        with open(self.path, 'rb', 1024 * 1024) as f:
             with contextlib.closing(mmap.mmap(f.fileno(), 0,
                                     access=mmap.ACCESS_READ)) as m:
 

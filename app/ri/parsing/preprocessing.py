@@ -87,6 +87,6 @@ def preprocess_string(s):
 
     for word in strip_short(s):
         if word not in STOPWORDS:
-            word =stemmer.stem(word.lower())
+            word = stemmer.stem(word)
             if word:
                 yield word

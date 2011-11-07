@@ -445,6 +445,9 @@ class Master(Logger, HTTPClient):
                         found = True
                         break
 
+                if found:
+                    break
+
                 if ignore_limits:
                     found = True
                     break

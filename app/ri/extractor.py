@@ -1,5 +1,6 @@
 import os
 import zipfile
+
 from parsing import preprocess_string
 
 class DocumentExtractor(object):
@@ -20,7 +21,7 @@ class DocumentExtractor(object):
 
                 for line in text.splitlines():
                     for word in preprocess_string(line):
-                        yield (perc, doc_id, word)
+                        yield (perc, word, doc_id)
 
 if __name__ == "__main__":
     import sys

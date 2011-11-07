@@ -1,7 +1,8 @@
 import os
 import json
-import struct
 
+from struct import pack, calcsize
+from extractor import DocumentExtractor
 from utils import Logger, create_file, get_id
 from collections import defaultdict
 
@@ -18,13 +19,9 @@ class MapperRI(Logger):
 
         self.dict = defaultdict(list)
 
-    def map(self, fname, docid):
-        file = open(fname)
-
-        for line in file.readlines():
-            for word in line.strip().split(' '):
-                yield (word, docid)
-
+    def map(self, fname, archive_docid):
+        for per, word, docid in DocumentExtractor(fname).get_words():
+            yield (word, docid)
 
     def flush_dict(self, main_dict, docid_list):
         handles = []
@@ -35,6 +32,7 @@ class MapperRI(Logger):
             handle = create_file(self.output_path, idx)
             handles.append((handle, get_id(handle.name)))
 
+        printed = False
         for term in sorted(main_dict):
             tmpdict = main_dict[term]
             handle = handles[hash(term) % num_reducer][0]
@@ -43,10 +41,9 @@ class MapperRI(Logger):
                 occur = tmpdict.get(docid, None)
 
                 if occur is not None:
-                    handle.write(struct.pack("I", len(term)))
-                    handle.write(struct.pack("%ds" % len(term), term))
-                    handle.write(struct.pack("III", 1, docid, occur))
-                    handle.write('\n')
+                    handle.write(pack("I", len(term)) +          \
+                                 pack("%ds" % len(term), term) + \
+                                 pack("III", 1, docid, occur) + '\n')
 
         # Let's close all the opened files and in case some file is empty just
         # delete it
@@ -68,7 +65,7 @@ class MapperRI(Logger):
         fname, docid = result
 
         limit_size = self.limit_size
-        docpair_size = struct.calcsize("I") * 2
+        docpair_size = calcsize("I") * 2
 
         # This dictionary is in the form {term1: {docid: occ, ..}, term2: .. }
         main_dict = {}
@@ -80,7 +77,6 @@ class MapperRI(Logger):
         word_bytes = 0
 
         result = []
-
 
         for cword, cdocid in self.map(fname, docid):
             doc_dct = main_dict.get(cword, None)
@@ -97,9 +93,9 @@ class MapperRI(Logger):
                 prev_docid = cdocid
                 word_bytes += docpair_size
 
-            if word_bytes >= limit_size:
+            if word_bytes >= limit_size or len(docid_list) > 500:
                 result.extend(self.flush_dict(main_dict, docid_list))
-                main_dict = defaultdict(defaultdict(int))
+                main_dict = {}
                 docid_list = []
                 prev_docid = -1
 
