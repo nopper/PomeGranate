@@ -53,7 +53,7 @@ def load_module(mod):
     return module
 
 
-def create_file(directory, reducer, prefix="map", delete=False):
+def create_file(directory, reducer, prefix="output", delete=False):
     """
     Utility function to create a unique named temporary file
     @param directory the output directory in which the file will be created
@@ -70,7 +70,7 @@ def get_id(fname):
     return int(os.path.basename(fname).split('-', 3)[2][1:])
 
 def get_file_name(path, reduce_idx, fid):
-    return os.path.join(path, "map-r{:06d}-p{:d}".format(reduce_idx, fid))
+    return os.path.join(path, "output-r{:06d}-p{:d}".format(reduce_idx, fid))
 
 def count_machines(fname):
     """

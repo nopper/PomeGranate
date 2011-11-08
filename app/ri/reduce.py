@@ -4,8 +4,8 @@ import json
 import os.path
 import contextlib
 import mmap
-import struct
 
+from struct import pack, unpack
 from utils import Logger, create_file, get_id
 from heapq import heappush, heappop, merge
 
@@ -15,20 +15,19 @@ class ReduceReader(Logger):
         self.path = fname
 
     def iterate(self):
-        with open(self.path, 'rb', 1024 * 1024) as f:
+        with open(self.path, 'rb', 8192) as f:
             with contextlib.closing(mmap.mmap(f.fileno(), 0,
                                     access=mmap.ACCESS_READ)) as m:
 
                 fsize = m.size()
 
                 while m.tell() < fsize:
-                    termlen = struct.unpack("I", m.read(4))[0]
-                    term = struct.unpack("%ds" % (termlen), m.read(termlen))[0]
-                    num_tuples = struct.unpack("I", m.read(4))[0]
+                    termlen, = unpack("I", m.read(4))
+                    term, = unpack("%ds" % (termlen), m.read(termlen))
+                    num_tuples, = unpack("I", m.read(4))
 
-                    for _ in range(num_tuples):
-                        str = m.read(8)
-                        docid, occ = struct.unpack("II", str)
+                    for _ in xrange(num_tuples):
+                        docid, occ = unpack("II", m.read(8))
                         yield (term, docid, occ)
 
                     m.read(1)
@@ -42,7 +41,6 @@ class ReducerRI(Logger):
     def reduce(self, reduce_idx, files):
         handles = []
 
-        self.info("Reducing %s" % (str(files)))
 
         for fname in files:
             reader = ReduceReader(os.path.join(self.input_path, fname))
@@ -54,6 +52,7 @@ class ReducerRI(Logger):
         # --> hello 1 5
 
         handle = create_file(self.input_path, reduce_idx, "output")
+        self.info("Output is %s. Reducing %s" % (handle.name, str(files)))
 
         prev_word = None
         prev_docid = -1
@@ -65,15 +64,15 @@ class ReducerRI(Logger):
         for item in merge(*handles):
             word, docid, cocc = item
 
-            same_id = prev_docid == docid
-            same_word = prev_word == word
+            same_id = (prev_docid == docid)
+            same_word = (prev_word == word)
 
             if same_id and same_word:
                 occur += cocc
             elif not same_id and same_word:
 
                 if prev_docid != -1:
-                    handle.write(struct.pack("II", prev_docid, occur))
+                    handle.write(pack("II", prev_docid, occur))
 
                 num_docs += 1
                 prev_docid = docid
@@ -84,19 +83,19 @@ class ReducerRI(Logger):
 
                 if position > 0:
                     handle.seek(position, 0)
-                    handle.write(struct.pack("I", num_docs))
+                    handle.write(pack("I", num_docs))
                     handle.seek(0, 2)
 
-                header = struct.pack("I%dsI" % len(word), len(word), word, 0)
+                header = pack("I", len(word)) + word + '\xDE\xAD\xC0\xDE'
 
                 if handle.tell() == 0:
                     handle.write(header)
                 else:
-                    handle.write("\n" + header)
+                    handle.write('\n' + header)
 
                 position = handle.tell() - 4
 
-                handle.write(struct.pack("II", docid, cocc))
+                handle.write(pack("II", docid, cocc))
 
                 prev_word = word
                 occur = cocc
@@ -111,7 +110,7 @@ class ReducerRI(Logger):
 
         inputs = []
         results = []
-        expr = os.path.join(self.input_path, "map-r{:06d}-*".format(reduce_idx))
+        expr = os.path.join(self.input_path, "output-r{:06d}-*".format(reduce_idx))
 
         for fname in glob.glob(expr):
             # TODO: usa get_id?
@@ -146,3 +145,14 @@ class ReducerRI(Logger):
 # messaggi.
 
 Reducer = ReducerRI
+
+if __name__ == "__main__":
+    import json, sys
+    if len(sys.argv) < 3:
+        print "Usage: %s <conf-file> <reduce_idx:int> <id:int> ..." % sys.argv[0]
+        sys.exit(-1)
+    else:
+        conf = json.load(open(sys.argv[1]))
+        files = map(lambda x: int(x), sys.argv[2:])
+        reducer = Reducer(conf)
+        reducer.execute([int(sys.argv[2]), files])

@@ -32,7 +32,6 @@ class MapperRI(Logger):
             handle = create_file(self.output_path, idx)
             handles.append((handle, get_id(handle.name)))
 
-        printed = False
         for term in sorted(main_dict):
             tmpdict = main_dict[term]
             handle = handles[hash(term) % num_reducer][0]
@@ -84,7 +83,7 @@ class MapperRI(Logger):
             if doc_dct is None:
                 doc_dct = {}
                 main_dict[cword] = doc_dct
-                word_bytes += len(cword)
+                word_bytes += len(cword) + 4 + 4 # Length + Number 1
 
             doc_dct[cdocid] = doc_dct.get(cdocid, 0) + 1
 

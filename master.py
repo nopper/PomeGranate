@@ -239,6 +239,7 @@ class Master(Logger, HTTPClient):
         if not skip:
             with self.reduce_lock:
                 self.reduce_started[msg.tag] = False
+                self.reducing_files[msg.tag].append(msg.result[0])
 
         # This contain previously reduced files in input and the result file
         # data will be an array (<reduceidx>, (<outpu>, <inp1>, <inp2>, ...))
@@ -459,11 +460,14 @@ class Master(Logger, HTTPClient):
                 return None
 
             files = self.reducing_files[reduce_idx]
+            self.reducing_files[reduce_idx] = files[num_files:]
             assigned = files[:num_files]
 
         files_id = map(lambda x: x[0], assigned)
-        if not files_id:
+
+        if not files_id or len(files_id) == 1:
             return None
+
         print "ASSIGN", reduce_idx, files_id
         return WorkerStatus(TYPE_REDUCE, reduce_idx, (reduce_idx, files_id))
 
