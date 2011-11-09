@@ -28,6 +28,7 @@ typedef struct _Posting Posting;
 FileReader *file_reader_new(int reducer_id, int file_id);
 gboolean file_reader_next(FileReader *reader, Posting *post);
 
-void reduce(int nfile, int *ids);
+typedef void (*reduce_callback)(Posting *post, gpointer udata);
+void reduce(int nfile, int *ids, reduce_callback callback, gpointer udata);
 
 #endif

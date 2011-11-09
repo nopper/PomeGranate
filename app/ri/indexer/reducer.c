@@ -58,6 +58,9 @@ gboolean file_reader_next(FileReader *reader, Posting *post)
 
         fread(&termlen, sizeof(guint), 1, reader->file);
 
+        if (termlen > 100)
+            printf("Error: %d %s %d\n", termlen, reader->filename, ftell(reader->file));
+
         cur->term = g_string_set_size(cur->term, termlen);
         fread(cur->term->str, sizeof(gchar), termlen, reader->file);
 
@@ -93,7 +96,7 @@ void file_reader_close(FileReader *reader)
     g_free(reader);
 }
 
-void reduce(int nfile, int *ids)
+void reduce(int nfile, int *ids, reduce_callback callback, gpointer udata)
 {
     unsigned int i, res, stop, iterations = 0;
     Posting post[nfile];
@@ -112,13 +115,16 @@ void reduce(int nfile, int *ids)
 
         for (i = 1; i < nfile; i++)
         {
-            res = memcmp(minimum->term->str, current->term->str, MIN(minimum->term->len, current->term->len));
+            res = memcmp(minimum->term->str, current->term->str,
+                         MIN(minimum->term->len, current->term->len));
 
             if (res > 0 || (res == 0 && minimum->docid > current->docid))
                 minimum = current;
 
             current++;
         }
+
+        callback(minimum, udata);
 
         i = minimum - &post[0];
         iterations ++;
@@ -140,6 +146,8 @@ void reduce(int nfile, int *ids)
             nfile--;
         }
     }
+
+    callback(NULL, udata);
 
     printf("Iterations: %d\n", iterations);
 
