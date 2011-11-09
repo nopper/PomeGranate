@@ -109,17 +109,4 @@ int main(int argc, char *argv[])
     reduce(argc - 2, ids, (reduce_callback)callback, (gpointer *)ctx);
 
     free(ids);
-
-#if 0
-    Posting post;
-    FileReader *reducer = file_reader_new(0, 592345);
-    int i = 0;
-
-    while (!file_reader_next(reducer, &post))
-    {
-        printf("%d -> %d\n", post.docid, post.occurrence);
-    }
-
-    printf("Read %d\n", i);
-#endif
 }
