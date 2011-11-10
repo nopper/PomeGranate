@@ -5,7 +5,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include "reducer.h"
+#include "libreducer.h"
 #include <glib.h>
 
 FileReader* file_reader_new(int reducer_id, int file_id)
@@ -43,6 +43,13 @@ gboolean file_reader_next(FileReader *reader, Posting *post)
     if (cur != NULL && cur->current == cur->postings)
     {
         fread(&delim, sizeof(gchar), 1, reader->file);
+
+        if (delim != '\n')
+        {
+            printf("Error: bogus delimiter on position %u\n", ftell(reader->file));
+            return TRUE;
+        }
+
         read_next = TRUE;
     }
     else if (cur == NULL)
@@ -53,13 +60,16 @@ gboolean file_reader_next(FileReader *reader, Posting *post)
     }
 
     if (read_next == TRUE) {
-        if (feof(reader->file))
-            return TRUE;
-
         fread(&termlen, sizeof(guint), 1, reader->file);
 
-        if (termlen > 100)
-            printf("Error: %d %s %d\n", termlen, reader->filename, ftell(reader->file));
+        if (feof(reader->file))
+        {
+            printf("Reached EOF\n");
+            return TRUE;
+        }
+
+        if (termlen > 100 || termlen == 0)
+            printf("Error: length=%d file=%s pos=%d\n", termlen, reader->filename, ftell(reader->file));
 
         cur->term = g_string_set_size(cur->term, termlen);
         fread(cur->term->str, sizeof(gchar), termlen, reader->file);
@@ -96,15 +106,15 @@ void file_reader_close(FileReader *reader)
     g_free(reader);
 }
 
-void reduce(int nfile, int *ids, reduce_callback callback, gpointer udata)
+void reduce(guint reducer_idx, guint nfile, guint *ids, reduce_callback callback, gpointer udata)
 {
-    unsigned int i, res, stop, iterations = 0;
+    guint i, j, res, stop, iterations = 0;
     Posting post[nfile];
     FileReader* readers[nfile], *reader;
 
     for (i = 0; i < nfile; i++)
     {
-        reader = file_reader_new(0, ids[i]);
+        reader = file_reader_new(reducer_idx, ids[i]);
         file_reader_next(reader, &post[i]);
         readers[i] = reader;
     }
@@ -139,7 +149,7 @@ void reduce(int nfile, int *ids, reduce_callback callback, gpointer udata)
             stop = nfile - i - 1;
 
             // We need to do a reallocation and remove this file
-            for (int j = 0; j < stop; j++,i++) {
+            for (j = 0; j < stop; j++,i++) {
                 readers[i] = readers[i + 1];
                 post[i] = post[i + 1];
             }

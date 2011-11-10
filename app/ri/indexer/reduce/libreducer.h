@@ -1,5 +1,5 @@
-#ifndef _REDUCER_H_
-#define _REDUCER_H_
+#ifndef _LIBREDUCER_H_
+#define _LIBREDUCER_H_
 
 #include <glib.h>
 
@@ -29,6 +29,6 @@ FileReader *file_reader_new(int reducer_id, int file_id);
 gboolean file_reader_next(FileReader *reader, Posting *post);
 
 typedef void (*reduce_callback)(Posting *post, gpointer udata);
-void reduce(int nfile, int *ids, reduce_callback callback, gpointer udata);
+void reduce(guint reducer_idx, guint nfile, guint *ids, reduce_callback callback, gpointer udata);
 
 #endif

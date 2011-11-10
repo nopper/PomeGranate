@@ -1,12 +1,16 @@
-CC=gcc --std=c99 -g -O0 -fno-omit-frame-pointer
-#CC=gcc --std=c99 -O3 -fomit-frame-pointer
-CFLAGS=`pkg-config --cflags glib-2.0`
-LDFLAGS=`pkg-config --libs glib-2.0`
+RM=rm
+CC=gcc -g -O0 -fno-omit-frame-pointer
+#CC=gcc -march=x86-64 -mtune=generic -O2 -pipe -fstack-protector --param=ssp-buffer-size=4 -D_FORTIFY_SOURCE=2
+CFLAGS=`pkg-config --cflags glib-2.0 libarchive` -I/usr/include
+LDFLAGS=`pkg-config --libs glib-2.0 libarchive`
 
-reducer: main.o reducer.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o reducer reducer.c main.c
+all: reducer mapper
+
+mapper:
+	cd map; $(CC) $(CFLAGS) $(LDFLAGS) -o mapper mapper.c parser.c libstemmer/*.c
+
+reducer:
+	cd reduce; $(CC) $(CFLAGS) $(LDFLAGS) -o reducer reducer.c libreducer.c
 
 clean:
-	rm reducer
-
-all: reducer
+	$(RM) -f reduce/reducer map/mapper
