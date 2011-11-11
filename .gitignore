@@ -1,4 +1,8 @@
 *.pyc
 *.o
 *~
+*gz
+output-r*
+app/ri/indexer/map/mapper
+app/ri/indexer/reduce/reducer
 lib/stemmer/stemmer.c

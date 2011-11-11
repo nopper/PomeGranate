@@ -1,133 +1,38 @@
-import os
-import json
-
-from struct import pack, calcsize
-from extractor import DocumentExtractor
-from utils import Logger, create_file, get_id
-from collections import defaultdict
+import subprocess
+from utils import Logger, get_id
 
 class MapperRI(Logger):
     def __init__(self, conf):
         super(MapperRI, self).__init__("MapperRI")
 
+        self.map_exec = conf["map-executable"]
         self.num_reducer = conf["num-reducer"]
         self.output_path = conf["map-output"]
         self.limit_size = int(conf["limit-size"])
-        self.continuation_id = [0, ] * self.num_reducer
 
         self.info("Limit size is %d" % self.limit_size)
 
-        self.dict = defaultdict(list)
+    def execute(self, inp):
+        archive, archiveid = inp
+        self.info("Processing arhive ID=%d name=%s" % (archiveid, archive))
 
-    def map(self, fname, archive_docid):
-        for per, word, docid in DocumentExtractor(fname).get_words():
-            yield (word, docid)
+        args = [self.map_exec,
+                self.num_reducer, archive, self.output_path, self.limit_size]
 
-    def flush_dict(self, main_dict, docid_list):
-        handles = []
-        num_reducer = self.num_reducer
+        process = subprocess.Popen(args, shell=True,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT)
 
-        for idx in range(num_reducer):
-            cont = self.continuation_id[idx]
-            handle = create_file(self.output_path, idx)
-            handles.append((handle, get_id(handle.name)))
+        results = []
+        for line in process.stdout.readlines():
+            if not line.startswith("=> "):
+                continue
 
-        for term in sorted(main_dict):
-            tmpdict = main_dict[term]
-            handle = handles[hash(term) % num_reducer][0]
+            fname, rid, fsize = line[3:].split(' ', 2)
+            results.append((int(rid), get_id(fname), int(fsize)))
 
-            for docid in docid_list:
-                occur = tmpdict.get(docid, None)
+        self.info("Map finished. Result is %s" % str(results))
 
-                if occur is not None:
-                    handle.write(pack("I", len(term)) +          \
-                                 pack("%ds" % len(term), term) + \
-                                 pack("III", 1, docid, occur) + '\n')
-
-        # Let's close all the opened files and in case some file is empty just
-        # delete it
-        files = []
-
-        for rid, (handle, fid) in enumerate(handles):
-            if handle.tell() == 0:
-                handle.close()
-                os.unlink(handle.name)
-            else:
-                handle.close()
-                files.append((rid, fid, os.stat(handle.name).st_size))
-
-        # The return list is something like [(rid, fid, fsize)]
-        return files
-
-    def execute(self, result):
-        self.info("Executing %s" % str(result))
-        fname, docid = result
-
-        limit_size = self.limit_size
-        docpair_size = calcsize("I") * 2
-
-        # This dictionary is in the form {term1: {docid: occ, ..}, term2: .. }
-        main_dict = {}
-
-        # Here we also have an auxiliary list to avoid a second phase of
-        # sorting by docid
-        prev_docid = -1
-        docid_list = []
-        word_bytes = 0
-
-        result = []
-
-        for cword, cdocid in self.map(fname, docid):
-            doc_dct = main_dict.get(cword, None)
-
-            if doc_dct is None:
-                doc_dct = {}
-                main_dict[cword] = doc_dct
-                word_bytes += len(cword) + 4 + 4 # Length + Number 1
-
-            doc_dct[cdocid] = doc_dct.get(cdocid, 0) + 1
-
-            if prev_docid != cdocid:
-                docid_list.append(cdocid)
-                prev_docid = cdocid
-                word_bytes += docpair_size
-
-            if word_bytes >= limit_size or len(docid_list) > 500:
-                result.extend(self.flush_dict(main_dict, docid_list))
-                main_dict = {}
-                docid_list = []
-                prev_docid = -1
-
-        result.extend(self.flush_dict(main_dict, docid_list))
-
-
-        # Qui potremmo avere una situazione in cui l'intero dizionario non
-        # fitti all'interno della memoria. Di conseguenza dovremo flushare piu
-        # volte su diversi file per uno stesso intervallo. Di conseguenza il
-        # master dovra tenere in considerazione questo fatto andando ad
-        # avvisare il reducer in maniera consistente. Esempio:
-
-        # La map non riesce a tenere in memoria i valori per l'intervallo a-f e
-        # per un dato archivio in input produce piu file contenenti i risultati
-        # i parziali:
-
-        # a-f +--> a-f-000
-        #     |--> a-f-001
-        #     \--> a-f-002
-        # g-n
-        # n-z
-
-        # Il risultato dovra quindi essere:
-        # [[a-f-000, a-f-001, a-f-002], g-n, n-z]
-
-        # Di conseguenza qui sarebbe piu' pratico avere come nome file:
-        # [reduce-r0-0001, reduce-r0-0002, reduce-r0-0003, reduce-r1-0000,
-        # reduce-r2-0000]
-
-        # Here we have to sort by keys and write to a temporary file than
-        # returin the name of the file.
-
-        self.info("Map finished. Result is %s" % str(result))
-        return result
+        return results
 
 Mapper = MapperRI

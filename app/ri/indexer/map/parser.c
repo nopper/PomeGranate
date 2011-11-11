@@ -1,10 +1,8 @@
-#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <archive_entry.h>
 #include "parser.h"
+#include "utils.h"
 
 struct _Iterator
 {
@@ -12,7 +10,8 @@ struct _Iterator
     guint counter;       /* A simple counter for tuples */
 
     FILE *file;
-    FILE **files;        /* Array of files. They are totally nun_reducers */
+    ExFile **files;      /* Array of files. They are totally nun_reducers */
+    gchar **buffers;     /* Array of buffers */
 
     GList *docids;       /* A sorted list of documents ids */
 
@@ -73,46 +72,16 @@ static inline gint word_compare(const gchar *a, const gchar *b, gpointer data)
     return g_strcmp0(a, b);
 }
 
-static FILE* create_file(guint reducer_idx)
-{
-    int fd, i;
-    guint fid, nibble;
-    GString *filename = g_string_new("");
-    g_string_printf(filename, FILE_FORMAT, reducer_idx, 0);
-
-    while (1)
-    {
-        fid = 0;
-
-        for (i = 0; i < ID_LENGTH; i++)
-        {
-            nibble = rand() % 9;
-            filename->str[i + ID_OFFSET] = '1' + nibble;
-
-            fid *= 10;
-            fid += nibble;
-        }
-
-        printf("Checking file %s\n", filename->str);
-
-        if ((fd = open(filename->str, O_RDWR | O_CREAT | O_EXCL,
-                       S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0)
-            continue;
-
-        printf("FID: %u\n", fid);
-
-        g_string_free(filename, TRUE);
-        return fdopen(fd, "w+");
-    }
-}
-
 static void parser_reset(Parser *parser)
 {
     g_hash_table_remove_all(parser->dict);
     g_hash_table_remove_all(parser->docid_set);
     g_tree_destroy(parser->word_tree);
 
-    parser->word_tree = g_tree_new_full((GCompareDataFunc)word_compare, NULL, NULL, g_free);
+    parser->word_tree = g_tree_new_full(
+        (GCompareDataFunc)word_compare, NULL,
+        NULL, g_free
+    );
 }
 
 static void write_tuple(const guint *docid, Iterator *iter)
@@ -142,7 +111,7 @@ static gboolean traverse_node(gchar *word, gchar *_, Iterator *iter)
     size_t len = strlen(word);
 
     iter->table = g_hash_table_lookup(iter->words, word);
-    iter->file = iter->files[(g_str_hash(word) % iter->num_reducers)];
+    iter->file = iter->files[(g_str_hash(word) % iter->num_reducers)]->file;
 
     fwrite((guint *)&len, sizeof(guint), 1, iter->file);
     fwrite(word, sizeof(gchar), len, iter->file);
@@ -169,10 +138,16 @@ static void parser_flushdict(Parser *parser)
     Iterator iter;
 
     iter.file = NULL;
-    iter.files = g_new0(FILE *, parser->num_reducers);
+    iter.files = g_new0(ExFile *, parser->num_reducers);
+    iter.buffers = g_new0(gchar *, parser->num_reducers);
 
     for (i = 0; i < parser->num_reducers; i++)
-        iter.files[i] = create_file(i);
+    {
+        iter.files[i] = create_file(parser->path, i);
+        iter.buffers[i] = (gchar *)g_malloc(BUFFSIZE);
+
+        setvbuf(iter.files[i]->file, (void *)iter.buffers[i], _IOFBF, BUFFSIZE);
+    }
 
     iter.num_reducers = parser->num_reducers;
     iter.docids = g_hash_table_get_keys(parser->docid_set);
@@ -187,9 +162,19 @@ static void parser_flushdict(Parser *parser)
     g_tree_foreach(parser->word_tree, (GTraverseFunc)traverse_node, &iter);
 
     for (i = 0; i < parser->num_reducers; i++)
-        fclose(iter.files[i]);
+    {
+        /* That's the result line that will be parsed by the interpreter. */
+        printf("=> %s %u %lu\n",
+               iter.files[i]->fname, i, ftell(iter.files[i]->file));
+
+        g_free(iter.files[i]->fname);
+        fclose(iter.files[i]->file);
+        g_free(iter.files[i]);
+        g_free(iter.buffers[i]);
+    }
 
     g_free(iter.files);
+    g_free(iter.buffers);
     g_list_free(iter.docids);
 
     parser_reset(parser);
@@ -210,7 +195,8 @@ static inline guint *get_or_create_docid(Parser *parser, guint docid)
     return docid_key;
 }
 
-static void dict_push_new_word(Parser *parser, const guint docid, const char *word)
+static void dict_push_new_word(Parser *parser, const guint docid,
+                               const char *word)
 {
     /* First we have to check if the docid is already in the docid set */
     gchar *word_key;
@@ -236,7 +222,8 @@ static void dict_push_new_word(Parser *parser, const guint docid, const char *wo
     g_tree_insert(parser->word_tree, word_key, word_key);
 }
 
-static void parser_putword(Parser *parser, const guint docid, const char *word, glong bytes)
+static void parser_putword(Parser *parser, const guint docid,
+                           const char *word, glong bytes)
 {
     guint *docid_key, *value;
     GHashTable *inner = g_hash_table_lookup(parser->dict, word);
@@ -244,11 +231,9 @@ static void parser_putword(Parser *parser, const guint docid, const char *word, 
     if (!inner)
     {
         dict_push_new_word(parser, docid, word);
-        parser->length += bytes + (sizeof(guint) * 2) + 1;
         return;
     }
 
-    parser->length += sizeof(guint) * 2;
     value = (guint *)g_hash_table_lookup(inner, &docid);
 
     if (value != NULL)
@@ -265,7 +250,8 @@ static void parser_putword(Parser *parser, const guint docid, const char *word, 
     g_hash_table_insert(inner, docid_key, value);
 }
 
-static void parse_file(Parser *parser, guint docid, const char *buff, size_t len)
+static void parse_file(Parser *parser, guint docid,
+                       const char *buff, size_t len)
 {
     guint pos = 0;
 
@@ -296,15 +282,15 @@ static void parse_file(Parser *parser, guint docid, const char *buff, size_t len
                 continue;
             else
             {
-                // We have a word here.
+                /* We have a word here */
                 utf8 = g_ucs4_to_utf8 (word, length, NULL, &bytes, NULL);
 
                 if (utf8)
                 {
-                    parser_putword(parser,
-                                   docid,
-                                   sb_stemmer_stem(parser->stemmer, utf8, bytes),
-                                   bytes);
+                    parser_putword(
+                        parser, docid,
+                        sb_stemmer_stem(parser->stemmer, utf8, bytes), bytes);
+
                     g_free(utf8);
                 }
 
@@ -331,21 +317,12 @@ static void parse_file(Parser *parser, guint docid, const char *buff, size_t len
     }
 }
 
-static guint extract_docid(const char *filename)
+static inline guint extract_docid(const char *filename)
 {
-    guint ret = (guint)atoi(filename + 4);
-    //printf("Returning %d %s\n", ret, filename + 4);
-    return ret;
+    return  (guint)atoi(filename + 4);
 }
 
-static void destroy_inner(gpointer inner)
-{
-    //printf("%p DEALLOC\n", inner);
-    g_hash_table_destroy((GHashTable *)inner);
-    //g_mem_profile();
-}
-
-Parser* parser_new(guint num_reducers, const char *input)
+Parser* parser_new(guint num_reducers, const char *input, const char *path)
 {
     Parser *parser = NULL;
     struct archive *arch = archive_read_new();
@@ -353,18 +330,30 @@ Parser* parser_new(guint num_reducers, const char *input)
     archive_read_support_compression_all(arch);
     archive_read_support_format_all(arch);
 
-    if (archive_read_open_filename(arch, input, 8192) != ARCHIVE_OK)
+    if (archive_read_open_filename(arch, input, 1024 * 1024) != ARCHIVE_OK)
         return NULL;
 
     parser = g_new0(struct _Parser, 1);
 
     parser->input = arch;
+    parser->path = g_strdup(path);
     parser->num_reducers = num_reducers;
     parser->stemmer = sb_stemmer_new("english", "UTF_8");
 
-    parser->dict = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)destroy_inner);
-    parser->word_tree = g_tree_new_full((GCompareDataFunc)word_compare, NULL, NULL, g_free);
-    parser->docid_set = g_hash_table_new_full(g_int_hash, g_int_equal, NULL, g_free);
+    parser->dict = g_hash_table_new_full(
+        g_str_hash, g_str_equal,
+        NULL, (GDestroyNotify)g_hash_table_destroy
+    );
+
+    parser->word_tree = g_tree_new_full(
+        (GCompareDataFunc)word_compare, NULL,
+        NULL, g_free
+    );
+
+    parser->docid_set = g_hash_table_new_full(
+        g_int_hash, g_int_equal,
+        NULL, g_free
+    );
 
     return parser;
 }
@@ -379,24 +368,46 @@ void parser_free(Parser *parser)
     g_hash_table_destroy(parser->docid_set);
     g_tree_destroy(parser->word_tree);
 
+    g_free(parser->path);
     g_free(parser);
-
-    g_mem_profile();
 }
 
-void parser_run(Parser *parser, glong limit)
+/* Simple function to get memory usage on a linux system
+ * Please note that this return the size in KB
+ */
+static guint get_memory_usage(void)
+{
+    FILE *fp;
+    guint usage;
+    char buff[128];
+
+    if((fp = fopen("/proc/self/status","r")))
+    {
+        while(fgets(&buff[0], 128, fp) != NULL)
+            if(strstr(&buff[0], "VmSize") != NULL)
+                if (sscanf(&buff[0], "%*s %d", &usage) == 1)
+                {
+                    fclose(fp);
+                    return usage;
+                }
+
+        fclose(fp);
+    }
+
+    return 0;
+}
+
+
+void parser_run(Parser *parser, guint limit)
 {
     size_t size;
     char buff[MAXLEN];
     struct archive_entry *entry;
+    guint docid;
     guint num_files = 0;
 
-    limit *= 2;
-
-    //g_mem_set_vtable(glib_mem_profiler_table);
-
     while (archive_read_next_header(parser->input, &entry) == ARCHIVE_OK) {
-        guint docid = extract_docid((const char *)archive_entry_pathname(entry));
+        docid = extract_docid((const char *)archive_entry_pathname(entry));
         size = archive_read_data(parser->input, &buff, MAXLEN);
 
         if (size > 0)
@@ -404,7 +415,7 @@ void parser_run(Parser *parser, glong limit)
             parse_file(parser, docid, &buff[0], size);
             num_files++;
 
-            if (parser->length >= limit)
+            if (get_memory_usage() >= limit)
             {
                 parser_flushdict(parser);
                 printf("Writing down partial result for %d files\n", num_files);

@@ -25,10 +25,12 @@ typedef struct _Cursor Cursor;
 typedef struct _FileReader FileReader;
 typedef struct _Posting Posting;
 
-FileReader *file_reader_new(int reducer_id, int file_id);
+FileReader *file_reader_new(const gchar *path, int reducer_id, int file_id);
 gboolean file_reader_next(FileReader *reader, Posting *post);
+void file_reader_close(FileReader *reader);
 
 typedef void (*reduce_callback)(Posting *post, gpointer udata);
-void reduce(guint reducer_idx, guint nfile, guint *ids, reduce_callback callback, gpointer udata);
+void reduce(const gchar *path, guint reducer_idx, guint nfile, guint *ids,
+            reduce_callback callback, gpointer udata);
 
 #endif

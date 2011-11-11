@@ -7,10 +7,10 @@ LDFLAGS=`pkg-config --libs glib-2.0 libarchive`
 all: reducer mapper
 
 mapper:
-	cd map; $(CC) $(CFLAGS) $(LDFLAGS) -o mapper mapper.c parser.c libstemmer/*.c
+	cd map; $(CC) $(CFLAGS) $(LDFLAGS) -o mapper mapper.c parser.c libstemmer/*.c ../utils/utils.c -I ../utils
 
 reducer:
-	cd reduce; $(CC) $(CFLAGS) $(LDFLAGS) -o reducer reducer.c libreducer.c
+	cd reduce; $(CC) $(CFLAGS) $(LDFLAGS) -o reducer reducer.c libreducer.c ../utils/utils.c -I ../utils
 
 clean:
 	$(RM) -f reduce/reducer map/mapper

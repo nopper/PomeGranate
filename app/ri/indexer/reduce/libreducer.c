@@ -1,3 +1,4 @@
+#include <glib.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -6,17 +7,16 @@
 #include <fcntl.h>
 
 #include "libreducer.h"
-#include <glib.h>
 
-FileReader* file_reader_new(int reducer_id, int file_id)
+FileReader* file_reader_new(const gchar *path, int reducer_id, int file_id)
 {
     FileReader *reader = g_new0(struct _FileReader, 1);
 
     GString *name = g_string_new("");
     g_string_printf(name, "output-r%06d-p%06d", reducer_id, file_id);
 
-    reader->filename = g_strdup(name->str);
-    reader->file = fopen(name->str, "rb");
+    reader->filename = g_build_filename(path, name->str, NULL);
+    reader->file = fopen(reader->filename, "rb");
 
     g_string_free(name, TRUE);
 
@@ -46,7 +46,8 @@ gboolean file_reader_next(FileReader *reader, Posting *post)
 
         if (delim != '\n')
         {
-            printf("Error: bogus delimiter on position %u\n", ftell(reader->file));
+            printf("Error: bogus delimiter on position %u\n",
+                   ftell(reader->file));
             return TRUE;
         }
 
@@ -69,7 +70,8 @@ gboolean file_reader_next(FileReader *reader, Posting *post)
         }
 
         if (termlen > 100 || termlen == 0)
-            printf("Error: length=%d file=%s pos=%d\n", termlen, reader->filename, ftell(reader->file));
+            printf("Error: length=%d file=%s pos=%d\n",
+                   termlen, reader->filename, ftell(reader->file));
 
         cur->term = g_string_set_size(cur->term, termlen);
         fread(cur->term->str, sizeof(gchar), termlen, reader->file);
@@ -106,7 +108,8 @@ void file_reader_close(FileReader *reader)
     g_free(reader);
 }
 
-void reduce(guint reducer_idx, guint nfile, guint *ids, reduce_callback callback, gpointer udata)
+void reduce(const gchar *path, guint reducer_idx, guint nfile, guint *ids,
+            reduce_callback callback, gpointer udata)
 {
     guint i, j, res, stop, iterations = 0;
     Posting post[nfile];
@@ -114,7 +117,7 @@ void reduce(guint reducer_idx, guint nfile, guint *ids, reduce_callback callback
 
     for (i = 0; i < nfile; i++)
     {
-        reader = file_reader_new(reducer_idx, ids[i]);
+        reader = file_reader_new(path, reducer_idx, ids[i]);
         file_reader_next(reader, &post[i]);
         readers[i] = reader;
     }

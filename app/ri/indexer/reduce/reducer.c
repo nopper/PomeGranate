@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "libreducer.h"
+#include "utils.h"
 
 struct _Context {
     gchar *str;
@@ -34,7 +35,7 @@ void callback(Posting *post, Context *ctx)
         fwrite(&ctx->docid, sizeof(guint), 1, ctx->file);
         fwrite(&ctx->occurrence, sizeof(guint), 1, ctx->file);
         fwrite((gchar []){'\n'}, sizeof(gchar), 1, ctx->file);
-        fclose(ctx->file);
+        //fclose(ctx->file);
 
         return;
     }
@@ -108,25 +109,41 @@ void callback(Posting *post, Context *ctx)
 int main(int argc, char *argv[])
 {
     guint i;
+    guint *ids;
+    ExFile *file;
+    Context *ctx;
+    guint reducer_idx;
+
     printf("int: %d guint: %d\n", sizeof(unsigned int), sizeof(guint));
 
-    if (argc < 4)
+    if (argc < 3)
     {
-        printf("Usage: %s <reduceidx> <outputfile> <int>..\n", argv[0]);
+        printf("Usage: %s <path> <reduceidx> <int>..\n", argv[0]);
         return -1;
     }
 
-    guint *ids = g_new(guint, (argc - 3));
+    ids = g_new(guint, (argc - 3));
+    reducer_idx = (guint)atoi(argv[2]);
 
     for (i = 3; i < argc; i++)
         *(ids + (i - 3)) = (guint)atoi(argv[i]);
 
-    Context *ctx = g_new0(struct _Context, 1);
+    file = create_file(argv[1], reducer_idx);
+    ctx = g_new0(struct _Context, 1);
 
     ctx->str = NULL;
-    ctx->file = fopen(argv[2], "w+");
+    ctx->file = file->file;
 
-    reduce((guint)atoi(argv[1]), argc - 3, ids, (reduce_callback)callback, (gpointer *)ctx);
+    reduce(argv[1], reducer_idx, argc - 3, ids,
+           (reduce_callback)callback, (gpointer *)ctx);
 
-    free(ids);
+    printf("=> %s %lu\n", file->fname, ftell(file->file));
+
+    /* Yes this is lame. Better to create exfile_close or something similar */
+    fclose(file->file);
+    g_free(file->fname);
+    g_free(file);
+
+    g_free(ctx);
+    g_free(ids);
 }

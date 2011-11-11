@@ -6,12 +6,9 @@
 #include <archive.h>
 #include "libstemmer/libstemmer.h"
 
+#define BUFFSIZE 8192
 #define MAXLEN (1024 * 1024 * 4)
 #define MAXWORD 64
-
-#define ID_LENGTH 6
-#define ID_OFFSET 16
-#define FILE_FORMAT "output-r%06u-p%06u"
 
 #define IS_LATIN(c)              (((c) <= 0x02AF) ||	\
                                   ((c) >= 0x1E00 && (c) <= 0x1EFF))
@@ -37,22 +34,23 @@ typedef enum {
 } WordType;
 
 struct _Parser {
-    struct sb_stemmer *stemmer;
-    GHashTable *dict;
-    struct archive *input;
+    struct archive *input;      /* The archive input file */
+    struct sb_stemmer *stemmer; /* Stemmer */
 
-    GList *docids;
-    GHashTable *docid_set;
-    GTree *word_tree;
+    GHashTable *dict;           /* The main hash table word -> table */
+    GHashTable *docid_set;      /* A hashtable used as a set to reduce space */
 
-    glong length; // Keep track of the length of the file
-    guint num_reducers;
+    GList *docids;              /* A linked list used in the final phase */
+    GTree *word_tree;           /* A balanced tree to store words in sorted way */
+
+    guint num_reducers;         /* Keep track of the number of reducers used */
+    gchar *path;                /* Output path where files will be saved */
 };
 
 typedef struct _Parser Parser;
 
-Parser* parser_new(guint num_reducers, const char *input);
+Parser* parser_new(guint num_reducers, const gchar *input, const gchar *path);
 void parser_free(Parser *parser);
-void parser_run(Parser *parser, glong limit);
+void parser_run(Parser *parser, guint limit);
 
 #endif
