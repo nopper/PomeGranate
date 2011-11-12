@@ -12,10 +12,14 @@ class ReducerRI(Logger):
         reduce_idx = files[0]
         files      = files[1]
 
-        args = [self.reduce_exec, reduce_idx]
-        args.extend(files)
+        args = [self.reduce_exec, self.input_path, str(reduce_idx)]
 
-        process = subprocess.Popen(args, shell=True,
+        for fid in files:
+            args.append(str(fid))
+
+        self.info("Executing %s" % str(args))
+
+        process = subprocess.Popen(args, shell=False,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
 

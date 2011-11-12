@@ -61,6 +61,22 @@
           color: black;
       }
 
+      .tlog td {
+          font-family: 'Bitstream Vera Sans Mono','Courier New',monospace;
+          font-size: 9pt;
+          padding: 5px 5px 4px;
+          color: black;
+      }
+
+
+      .aboutlist ul {
+          list-style-type: none;
+      }
+
+      .aboutlist li {
+          color: black;
+      }
+
       .actions {
         margin-top: 9px;
         margin-bottom: 9px;
@@ -68,31 +84,30 @@
         -webkit-border-radius: 0 0 3px 3px;
         -moz-border-radius: 0 0 3px 3px;
         border-radius: 0 0 3px 3px;
-       }
+      }
 
     </style>
-    <title>MapReduce Python Framework - Frontend</title>
+    <title>PomeGranate: MapReduce Python Framework - Web Monitor</title>
   </head>
-  <body>
+  <body class="tundra">
     {% block topbar %}
     <div class="topbar">
       <div class="fill">
         <div class="container">
-          <a class="brand" href="#">MapReduce</a>
+          <a class="brand" href="#">PomeGranate</a>
           <ul class="nav">
             <li class="active"><a href="#">Status</a></li>
-            <li><a href="#new">New computation</a></li>
-            <li><a href="#about">About</a></li>
+            <li id="new-computation"><a href="#new">New computation</a></li>
+            <li><a href="#about" onclick="onAbout();">About</a></li>
           </ul>
         </div>
       </div>
     </div>
     {% endblock %}
     <div class="container">
-
       <div class="content">
         <div class="page-header">
-          <h1>{% block title %}{{ title }}{% endblock %}</h1>
+          <h1>{% block title %}PomeGranate status{% endblock %}</h1>
         </div>
         <div class="row">
         {% block main %}
@@ -108,7 +123,7 @@
 
       {% block footer %}
       <footer>
-        <p>&copy; 2011 - Python MapReduce Framework</p>
+        <p>&copy; 2011 PomeGranate - the fruity MapReduce framework</p>
       </footer>
       {% endblock %}
     </div>

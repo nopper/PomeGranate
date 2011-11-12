@@ -74,18 +74,17 @@ class ApplicationStatus(object):
 
     def get_masters(self):
         def get_triple(x):
-            print x
             return "%d/%d/%d" % (x[0], x[1], x[0] + x[1])
 
         result = []
 
         for master, d in sorted(self.masters.items()):
-            print d
             files = d['files'][1]
             bound = 1024.0 ** 2
             size_str = "%.2f/%.2f/%.2f" % (files[0] / bound,
                                            files[1] / bound,
                                            (files[0] + files[1]) / bound)
+
             result.append([
                 master,
                 d['rtt'],

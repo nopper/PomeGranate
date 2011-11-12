@@ -6,6 +6,7 @@
     dojo.require("dijit.form.Button");
     dojo.require("dijit.form.Slider");
     dojo.require("dijit.form.TextBox");
+    dojo.require("dijit.Tooltip");
     dojo.require("dijit.Dialog");
     dojo.require("dojox.html.entities");
 
@@ -29,8 +30,27 @@
     };
 
     var poller = null;
+    var dlg = null;
     var degreeDlg = null;
     var currentNick = null;
+
+    function onNew()
+    {
+        alert("Not yet implemented");
+        return false;
+    }
+
+    function onAbout()
+    {
+        dlg = dijit.byId("adialog");
+        dlg.attr('style', 'text-align: center;');
+        dojo.html.set(dojo.byId("emptydiv"),
+                '<h4>PomeGranate</h4><p>a fruity MapReduce framework brough to you by:<ul>' +
+                '<li>Francesco Piccinno</li><li>Andrea Bozzi</li></ul><p>'
+        );
+        dlg.show();
+        return false;
+    }
 
     function toggleUpdate() {
         if (poller == null) return false;
@@ -85,6 +105,11 @@
     }
 
     dojo.addOnLoad(function() {
+        new dijit.Tooltip({
+            position: ["below"],
+            connectId: ["new-computation"],
+            label: "Well just restart the server! You mad?"
+        });
         var slider = new dijit.form.HorizontalSlider({
             name: "slider",
             value: 0,
@@ -115,9 +140,12 @@
                            "</td><td>" + (data['map_completed'] + data['reduce_completed']) +
                            "</td><td>" + (data['map_faulted'] + data['reduce_faulted']) + "</td></tr>");
 
-                dojo.html.set(dojo.byId("applog"), dojox.html.entities.encode(data['lastlog'].join('\n')));
+                var html = '', array = data["lastlog"];
+                for (var i=0; i < array.length; i++)
+                  html += '<tr><td>' + array[i] + '</td></tr>';
+                dojo.html.set(dojo.byId("applog"), html);
 
-                var html = '';
+                html = '';
                 var masters = data['masters'];
 
                 for (nick in masters) {
@@ -168,6 +196,9 @@
 {% endblock %}
 
 {% block main %}
+<div class="tundra span6" id="adialog" dojoType="dijit.Dialog" title="About PomeGranate" style="display: none;">
+  <div id="emptydiv" class="aboutlist"></div>
+</div>
 <div class="tundra span8" id="dialog" dojoType="dijit.Dialog" title="Parallelism degree change" style="display: none;">
   <form>
     <h3>Parallelism degree change</h3>
@@ -220,7 +251,7 @@ On the contrary a negative number will tell to the master to remove redundant wo
       {% for name, rtt, proc, finished, ongoing, files, status in status.get_masters() %}
       <tr>
         <td><code><a href="#" onclick="editNode('{{ name }}');">{{ name }}</a></code></td>
-        <td>>{{ rtt }}</td>
+        <td>{{ rtt }}</td>
         <td>{{ proc }}</td>
         <td>{{ finished }}</td>
         <td>{{ ongoing }}</td>
@@ -248,9 +279,9 @@ On the contrary a negative number will tell to the master to remove redundant wo
       <tr>
         <td>{{ status.get_percentage() }}</td>
         <td>{{ status.get_phase() }}</td>
-        <td>{{ status.map_file }} files, {{ status.map_file_size }} MBs</td>
-        <td>{{ status.reduce_file }} files, {{ status.reduce_file_size }} MBs</td>
-        <td>{{ status.map_file + status.reduce_file }} files, {{ status.map_file_size + status.reduce_file_size }} MBs</td>
+        <td>{{ status.map_file }} files, {{ "%.2f" % (status.map_file_size / (1024 ** 2)) }} MBs</td>
+        <td>{{ status.reduce_file }} files, {{ "%.2f" % (status.reduce_file_size / (1024 ** 2)) }} MBs</td>
+        <td>{{ status.map_file + status.reduce_file }} files, {{ "%.2f" % ((status.map_file_size + status.reduce_file_size) / (1024 ** 2)) }} MBs</td>
         <td>{{ status.get_processes() }}</td>
         <td>{{ status.get_eta() }}</td>
       </tr>
@@ -288,9 +319,9 @@ On the contrary a negative number will tell to the master to remove redundant wo
   </table>
 
   <h2>Application Log</h2>
-  <textarea rows="20" readonly="true" class="span14" id="applog">
-{% for msg in status.get_last_messages() %}{{ msg }}
-{% endfor %}
-  </textarea>
+  <table class="zebra-striped">
+    <thead><tr><th>Message</th></tr></thead>
+    <tbody id="applog" class="tlog">{% for msg in status.get_last_messages() %}<tr><td>{{ msg }}</td></tr>{% endfor %}</tbody>
+  </table>
 </div>
 {% endblock %}

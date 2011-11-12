@@ -14,12 +14,15 @@ class MapperRI(Logger):
 
     def execute(self, inp):
         archive, archiveid = inp
-        self.info("Processing arhive ID=%d name=%s" % (archiveid, archive))
 
         args = [self.map_exec,
-                self.num_reducer, archive, self.output_path, self.limit_size]
+                str(self.num_reducer), archive, self.output_path,
+                str(self.limit_size)]
 
-        process = subprocess.Popen(args, shell=True,
+        self.info("Processing arhive ID=%d name=%s" % (archiveid, archive))
+        self.info("Executing %s" % str(args))
+
+        process = subprocess.Popen(args, shell=False,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
 

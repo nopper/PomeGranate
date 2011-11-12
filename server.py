@@ -60,30 +60,65 @@ class Handler(RequestHandler):
         elif self.path == "/status":
             data = json.dumps(self.server.status.__dict__, sort_keys=True)
 
-            print data
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Content-Length', len(data))
             self.end_headers()
             self.wfile.write(data)
         elif self.path == "/favicon.ico":
-            # Don't worry it's not a shellcode. Just a little lego block
-            data = "\x1f\x8b\x08\x00\x0e\x2d\xb4\x4e\x02\xff\xed\x94\xbd\x11" \
-                   "\xc2\x30\x0c\x46\x25\xdb\x72\x62\xc9\x05\x15\x35\x25\x83" \
-                   "\xb0\x02\x2b\x70\x6c\x40\x4b\xc9\x0a\xac\xc0\x0a\xac\xc0" \
-                   "\x0a\xac\xc0\x0a\xf0\xc9\x21\xc7\x4f\x4b\xc7\xe5\xe5\xde" \
-                   "\xc9\x5f\x62\xcb\x67\x17\x21\x62\x3c\xb3\x19\x35\xb6\x42" \
-                   "\x34\x47\x5d\x42\x7f\xb5\x80\x4c\xfd\xf0\x91\xe9\xc5\xfb" \
-                   "\x98\x6e\xf0\x0c\x0f\x70\x0d\xaf\xf0\x04\x77\x70\x05\xef" \
-                   "\xf0\x02\x8f\x70\x43\x13\x13\x13\x7f\x42\xef\xd4\x11\x4b" \
-                   "\x1f\x64\x2b\x1f\x20\x4b\x30\xd3\x52\x24\x5b\x16\xcf\xa1" \
-                   "\x4b\x7d\x64\xb6\x2e\xa5\xe0\x59\x7d\xcc\x22\x2c\xd5\xca" \
-                   "\xb0\x9e\x83\x78\xd1\x3c\x66\x8f\xec\xe5\x99\xb9\x3c\x0b" \
-                   "\x32\x8b\xaa\xf8\x1c\x95\x96\x35\xd6\x9a\xd1\xa2\x4b\x51" \
-                   "\xdb\x7e\xd9\x52\x65\xc9\x39\xf6\xad\x1f\xe6\x86\x28\x58" \
-                   "\xcb\x86\xfd\x6a\x6b\xa4\xec\xfd\x25\x8c\xf9\xd5\xbf\x7e" \
-                   "\x9d\x87\xf6\xbf\xdc\x1d\xfe\xa1\x0f\xe5\x7d\xa4\x25\x7e" \
-                   "\x05\x00\x00"
+            # Don't worry it's not a shellcode. Just a little pomegranate.
+            data = "\x1f\x8b\x08\x00\x1a\x5c\xbd\x4e\x02\xff\x7d\x93\x5d\x48" \
+                   "\x53\x61\x18\xc7\x5f\x51\x13\x22\xc8\xab\xa0\x8b\xa8\x08" \
+                   "\x75\x4b\x41\x48\x41\xad\x0b\x25\x49\xba\x30\x4c\x10\xba" \
+                   "\x50\x48\x32\x69\x51\x90\x98\x49\x20\x51\x57\xdd\x94\x17" \
+                   "\x85\x46\x98\x1f\xab\x99\x9b\x8a\x9f\xac\xa6\x73\x56\xba" \
+                   "\x48\x51\x2c\x29\x8d\x44\xcf\xdc\x3a\x9e\x8f\xb9\x39\xb5" \
+                   "\xa5\xce\xa3\xdb\xbf\xf7\x4c\x56\x53\x97\xcf\xe1\x7f\x2e" \
+                   "\xde\xf3\xfe\xce\xf3\x7f\x9e\xf7\x79\x09\x09\xa3\x4f\x74" \
+                   "\x34\xa1\xef\x63\x44\x15\x41\xc8\x21\x42\x88\x82\x8a\x2e" \
+                   "\xd1\x95\xad\x75\x7f\x44\x90\x5d\x01\xe0\xaf\x36\x36\x7c" \
+                   "\xe1\x63\x63\x6b\xa7\x2b\x2a\xec\x35\x19\x19\x36\x4b\x7c" \
+                   "\x3c\xe3\x49\x88\x67\xd6\xd2\x33\xac\x96\xf2\x72\x51\x3d" \
+                   "\x34\xb4\x92\x29\x49\xbe\xc8\x60\x26\x20\x51\xdc\x38\x5c" \
+                   "\x56\x66\xd7\xc8\x4c\x6c\x2c\x83\x2d\xcd\xa0\x5a\x6d\xc5" \
+                   "\xb3\x66\x01\x85\xd7\x6d\x48\x4a\x66\x24\x95\x8a\xef\xb6" \
+                   "\xd9\xd6\x4f\x04\xb3\x1c\x27\x1d\xc9\xcb\x9b\x1b\xa6\x8c" \
+                   "\xf7\x1f\xcb\x40\xa9\x98\xc6\x73\xed\x1c\x34\x06\x11\x66" \
+                   "\xce\x8d\xee\xf1\x25\x5c\xba\xc2\x22\x3b\xfb\xe7\x37\x8b" \
+                   "\x65\x3d\x56\x66\xd7\xd7\x7d\xfb\x54\x2a\xa1\x63\x27\x1b" \
+                   "\x23\xf3\xca\x69\x68\xfb\x04\x74\x8c\x2c\xa0\x5a\xcb\xa3" \
+                   "\xe5\xe3\x02\x7a\xbe\x2f\xe1\xf2\x0d\xce\x9b\x9f\xcf\xbd" \
+                   "\x5f\x5d\xf5\xee\x37\x99\x7e\x5f\xd8\xee\x79\x3b\xdf\xdc" \
+                   "\x2f\xa0\x6b\xc4\x89\x2a\x9d\x88\xb6\x4f\x4e\xbc\x36\x39" \
+                   "\xf0\xb8\x96\x43\x7a\xa6\x55\x6a\x6e\x5e\xbe\x4a\x73\x77" \
+                   "\xed\xcc\x1d\xe0\x4f\x52\xbe\xa6\x95\xc3\x8b\xb6\x2d\x0f" \
+                   "\x55\x3a\x3b\x5a\x07\xe7\xf1\xf6\xab\x0b\x77\x1e\x8a\xde" \
+                   "\xdc\x8b\xec\x48\x6a\xea\xac\xb8\x93\x0d\xe6\x5f\xe9\x05" \
+                   "\x68\xdf\x39\xd0\x44\x55\xa7\x77\x40\x37\xe0\x44\x27\xf5" \
+                   "\x53\xdf\xe3\x42\x42\x02\xe3\x09\xe5\x3d\x98\x6f\x1b\x14" \
+                   "\xa1\xff\xe2\x42\x65\x03\xad\x63\x74\x01\x8d\xfd\x4e\xa8" \
+                   "\xf5\x22\x5a\x87\x97\xa0\x50\x32\x48\x49\x99\x9d\xdf\x8b" \
+                   "\x7f\x49\xf3\x37\xf5\xcf\x43\xd3\xe7\x40\x6d\xf7\xbc\xdf" \
+                   "\x47\xc7\xb0\x13\x0d\xc6\x45\x7f\xfe\xe2\x62\x5e\xbf\x57" \
+                   "\xfd\x75\xed\x3c\xea\xbb\x04\x74\x8e\xba\x50\xdd\x42\xeb" \
+                   "\x37\x3b\x60\x98\x58\xc4\xdd\x47\x76\x7a\x8e\xec\xb8\xc1" \
+                   "\xe0\xce\xfb\x5f\x0d\x32\xaf\x33\x09\xfe\xbe\x3f\xd1\x88" \
+                   "\x68\x31\x3b\xd1\x48\xfb\x5f\x59\xcf\xe3\x6c\x96\x55\x6a" \
+                   "\x50\x2f\xdd\xa2\xe7\x1f\x55\x54\xc4\xbf\x89\x89\x99\xd9" \
+                   "\xe5\x41\x9e\x9f\xa6\x5e\xc1\xcf\x3d\x6d\x14\xfc\xbd\x33" \
+                   "\xfe\x58\x46\xf1\x6d\x1e\xb9\xb9\xec\xe8\xf2\xf2\xe6\x41" \
+                   "\x79\x86\x6c\x36\xe9\x78\x4e\x0e\xfb\x39\xe4\xfc\xe9\x38" \
+                   "\xbf\x7f\x33\xef\x46\xef\xd4\x2f\x14\xde\x9c\xc3\xb9\x2c" \
+                   "\x9b\x65\x72\xd2\x73\x2a\x78\x86\x59\x56\x3a\x4a\x67\xa1" \
+                   "\x5d\xa9\x64\xa4\x00\xaf\x88\x9b\x41\x43\x3b\x0b\xb5\xc1" \
+                   "\x81\x92\x7b\x1c\x52\xcf\x58\xbc\x05\x05\xec\xd0\xd4\x94" \
+                   "\x27\x29\xd4\x1d\xa2\xb5\x44\x0e\x0c\xae\x9c\x2f\x2d\x15" \
+                   "\xb5\x69\x69\xb3\x76\xf9\x1f\x71\xf4\x0e\x25\x27\x33\xee" \
+                   "\x6b\x2a\xbe\xcf\xd0\xe3\x2e\xa0\x33\x7b\x20\x14\xbb\x53" \
+                   "\x13\x13\x9e\xa4\xc4\x44\xcb\x0a\xf5\xb3\x69\x34\xba\x4a" \
+                   "\x7c\x3e\x5f\xc8\x7d\x9e\xa3\x84\x58\xa3\x08\xf9\x10\x4e" \
+                   "\xc8\x83\xb0\x2d\x85\x8a\xc0\x37\x79\x9f\xbc\x5f\xe6\x7c" \
+                   "\xf7\x09\xf9\x03\xdb\xea\xc0\x08\x7e\x04\x00\x00"
 
             self.send_response(200)
             self.send_header('Content-Encoding', 'gzip')
@@ -146,7 +181,7 @@ class Handler(RequestHandler):
             self.__send_data('registration-ok')
             server.info("Group %s succesfully registered" % nick)
 
-            if nick in server.reduce_dict:
+            if nick in server.dead_reduce_dict:
                 lst = server.dead_reduce_dict[nick]
                 server.reduce_dict[nick] = lst
                 del server.dead_reduce_dict[nick]
@@ -198,8 +233,10 @@ class Handler(RequestHandler):
 
         else:
             if len(server.pending_works) == 0:
-                if self._reduce_finished():
-                    print "ASSIGNING MERGE"
+                completed = self._reduce_completed()
+                need_recovery = self._need_recovery()
+
+                if completed and not need_recovery:
                     self.assign_merge()
 
                     lst = server.reduce_dict[nick]
@@ -210,6 +247,16 @@ class Handler(RequestHandler):
                         self.__send_data('plz-die')
 
                     return
+
+                elif completed and need_recovery:
+                    # This will converge slowly but better than nothing
+                    zombie, lst = server.dead_reduce_dict.popitem()
+                    server.info("Reassinging jobs from %s to %s -> %s" % \
+                                (zombie, nick, str(lst)))
+
+                    server.reduce_dict[nick] = lst
+                    server.status.reduce_assigned += 1
+                    self.__send_data('reduce-recovery', data=lst)
 
                 else:
                     # If we have not any work nor pending works to acknowledge the
@@ -222,6 +269,10 @@ class Handler(RequestHandler):
                         self.eos_sent = True
 
             # Otherwise just tell to the worker to retry in few moments
+
+            server.info("Pending: %s" % str(server.pending_works))
+            server.info("Reducing: %s" % str(server.reduce_dict))
+            server.info("Dead list: %s" % str(server.dead_reduce_dict))
             server.info("You have to wait my little friend")
             self.__send_data('try-later')
 
@@ -266,16 +317,32 @@ class Handler(RequestHandler):
         # TODO: remove me. Superflous
         self.__send_data('plz-die')
 
-    def _reduce_finished(self):
-        server = self.server
+    def _reduce_completed(self):
+        """
+        Utility function that checks if the assigned reduce have been
+        succesfully completed. No check is made on the dead structure.
+        """
 
-        if not server.dead_reduce_dict:
-            for nick, reducers in server.reduce_dict.items():
-                for reduce_lst in reducers:
-                    if len(reduce_lst) > 1:
-                        return False
+        for nick, reducers in self.server.reduce_dict.items():
+            if not reducers:
+                continue
+
+            for reduce_lst in reducers:
+                if len(reduce_lst) > 1:
+                    return False
+
+        return True
+
+    def _need_recovery(self):
+        """
+        Return a boolean indicating if there are reduce works to recovery.
+        This is of course implemented with a check in the dead structure.
+        """
+
+        if self.server.dead_reduce_dict:
             return True
-        return False
+        else:
+            return False
 
     def __send_data(self, type, nick='', data='', code=200):
         payload = json.dumps({
@@ -377,8 +444,6 @@ class Handler(RequestHandler):
         if len(to_delete) > 0:
             server.error("Failed to remove reduce files %s" % str(to_delete))
             self.__send_data('reduce-ack-fail', nick, data)
-
-        print server.reduce_dict
 
     def _on_keep_alive(self, server, type, nick, data):
         if not nick in server.masters:

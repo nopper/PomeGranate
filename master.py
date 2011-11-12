@@ -417,7 +417,7 @@ class Master(Logger, HTTPClient):
         This function has to check the reducing_file_sizes and reducing_files
         and if a given threshold is met return a WorkerStatus representing a
         reduce operation.
-        @return a WorkerStatus instane or None if a reduce is not required
+        @return a WorkerStatus instance or None if a reduce is not required
         """
 
         # FIXME: In case this create load unbalancing substitute with an heap
@@ -426,7 +426,6 @@ class Master(Logger, HTTPClient):
         found = False
         reduce_idx = 0
 
-        cum_size = 0
         num_files = 0
 
         with self.reduce_lock:
@@ -435,14 +434,12 @@ class Master(Logger, HTTPClient):
                     continue
 
                 for fid, fsize in reduce_list:
-                    cum_size += fsize
                     num_files += 1
 
                     if ignore_limits:
                         continue
 
-                    if cum_size >= self.threshold_size or \
-                       num_files >= self.threshold_nfile:
+                    if num_files >= self.threshold_nfile:
                         found = True
                         break
 
@@ -453,7 +450,6 @@ class Master(Logger, HTTPClient):
                     found = True
                     break
 
-                cum_size = 0
                 num_files = 0
 
             if not found:
