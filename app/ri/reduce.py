@@ -1,3 +1,4 @@
+import time
 import subprocess
 from utils import Logger, get_id
 
@@ -19,6 +20,7 @@ class ReducerRI(Logger):
 
         self.info("Executing %s" % str(args))
 
+        start = time.time()
         process = subprocess.Popen(args, shell=False,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
@@ -30,9 +32,11 @@ class ReducerRI(Logger):
                 continue
 
             fname, fsize = line[3:].split(' ', 1)
-            results.insert(0, (get_id(fname), int(fsize)))
+            fsize = int(fsize)
+
+            results.insert(0, (get_id(fname), fsize))
             break
 
-        return results
+        return ((fsize, time.time() - start), results)
 
 Reducer = ReducerRI

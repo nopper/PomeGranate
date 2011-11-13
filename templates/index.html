@@ -8,7 +8,10 @@
     dojo.require("dijit.form.TextBox");
     dojo.require("dijit.Tooltip");
     dojo.require("dijit.Dialog");
+    dojo.require("dojox.fx.scroll");
     dojo.require("dojox.html.entities");
+    dojo.require("dojox.charting.Chart2D");
+    dojo.require("dojox.charting.themes.PlotKit.orange");
 
     var Poll = function(pollFunction, intervalTime) {
         var intervalId = null;
@@ -33,12 +36,7 @@
     var dlg = null;
     var degreeDlg = null;
     var currentNick = null;
-
-    function onNew()
-    {
-        alert("Not yet implemented");
-        return false;
-    }
+    var chart = null;
 
     function onAbout()
     {
@@ -105,6 +103,16 @@
     }
 
     dojo.addOnLoad(function() {
+        chart = new dojox.charting.Chart2D("graph");
+        chart.addPlot("default", {type: "Lines", markers: false, gap:1, tension:3, shadows: {dx: 2, dy: 2, dw: 2}})
+        .addAxis("x", {fixLower: "lower", fixUpper: "major", includeZero: false, minorTicks: false, microTicks: false, natural: true})
+        .addAxis("y", {vertical: true, fixLower: "lower", fixUpper: "major", natural: true, microTicks:false, includeZero: true})
+        .setTheme(dojox.charting.themes.PlotKit.orange)
+        .addSeries("Global", [1, 2, 2, 3, 4, 5, 5, 7])
+        .render();
+    });
+
+    dojo.addOnLoad(function() {
         new dijit.Tooltip({
             position: ["below"],
             connectId: ["new-computation"],
@@ -129,58 +137,40 @@
             handleAs: "json",
             load: function(data) {
                 dojo.html.set(dojo.byId("lastupdate"), '<span class="label">Last update on ' + Date() + '</span>');
-                dojo.html.set(dojo.byId("inputs-body"),
-                           "<tr><td>"  + data['map_assigned'] +
-                           "</td><td>" + data['reduce_assigned'] +
-                           "</td><td>" + data['map_completed'] +
-                           "</td><td>" + data['reduce_completed'] +
-                           "</td><td>" + data['map_faulted'] +
-                           "</td><td>" + data['reduce_faulted'] +
-                           "</td><td>" + (data['map_assigned'] + data['reduce_assigned']) +
-                           "</td><td>" + (data['map_completed'] + data['reduce_completed']) +
-                           "</td><td>" + (data['map_faulted'] + data['reduce_faulted']) + "</td></tr>");
 
-                var html = '', array = data["lastlog"];
-                for (var i=0; i < array.length; i++)
-                  html += '<tr><td>' + array[i] + '</td></tr>';
+                var html = '';
+                dojo.forEach(data['inputs'], function(item, i) { html += '<td>' + item + '</td>';});
+                dojo.html.set(dojo.byId("inputs-body"), '<tr>' + html + '</tr>');
+
+                html = '';
+                dojo.forEach(data['overview'], function(item, i) { html += '<td>' + item + '</td>';});
+                dojo.html.set(dojo.byId("overview-body"), '<tr>' + html + '</tr>');
+
+                var i = 0;
+                var arr = data['lastlog'];
+                html = '';
+
+                for (i=0; i < arr.length; i++)
+                    html += '<tr><td>' + arr[i] + '</td></tr>';
+
+                console.debug(data['graph']);
+
                 dojo.html.set(dojo.byId("applog"), html);
+                dojox.fx.smoothScroll({node: dojo.query('#applog :last-child')[i], win: dojo.byId('tlog')}).play();
+
+                var s = dojo.map(data['graph'], function(item) { return {x:item[1], y:item[0]};});
+                chart.updateSeries("Global", s);
+                chart.render();
 
                 html = '';
                 var masters = data['masters'];
-
-                for (nick in masters) {
-                    var state = masters[nick];
-
-                    var finished = state['finished'][0] + '/' +
-                                   state['finished'][1] + '/' +
-                                   (state['finished'][0] + state['finished'][1]);
-
-                    var ongoing = state['ongoing'][0] + '/' +
-                                  state['ongoing'][1] + '/' +
-                                  (state['ongoing'][0] + state['ongoing'][1]);
-
-                    var files = state['files'];
-
-                    var nfiles = files[0][0] + '/' +
-                                 files[0][1] + '/' +
-                                 (files[0][0] + files[0][1]);
-                    var sizes = (files[1][0] / (1024.0 * 1024.0)).toFixed(2) + '/' +
-                                (files[1][1] / (1024.0 * 1024.0)).toFixed(2) + '/' +
-                                ((files[1][0] + files[1][1]) / (1024.0 * 1024.0)).toFixed(2);
-
-                    var status = '';
-
-                    if (state['status'] == 'online')
-                        status = '<span class="label success">online</span>';
-                    else if (state['status'] == 'dead')
-                        status = '<span class="label error">dead</span>';
-
-                    var row = "<tr><td><code><a href=\"#\" onclick=\"editNode('" + nick + "')\">" + nick +
-                               "</a></code></td><td>" + state['rtt'] + "</td><td>" +
-                               state['proc'] + "</td><td>" + finished + "</td><td>" +
-                               ongoing + "</td><td>" + nfiles + " files, " + sizes + " MBs</td><td>" + status + "</td></tr>";
-
-                    html += row;
+                for (i=0; i < masters.length; i++) {
+                    var inner = masters[i];
+                    html += '<tr><td><code><a href="#" onclick="editNode(\'' +
+                            inner[0] + '\');">' + inner[0] + '</a></code></td>';
+                    for (var j=1; j < inner.length; j++)
+                        html += '<td>' + inner[j] + '</td>';
+                    html += '</tr>';
                 }
 
                 dojo.html.set(dojo.byId('status-body'), html);
@@ -228,11 +218,16 @@ On the contrary a negative number will tell to the master to remove redundant wo
 </div>
 
 <div class="span14">
-<div style="margin-bottom: 30px;">
-    <input type="checkbox" name="auto-sync" id="sync-chk" value="option" checked="1" onclick="toggleUpdate();" disabled="true">
-    <span>Automatically update the view every 5 seconds</span>
-    <div id="lastupdate"></div>
-</div>
+
+  <div class="row">
+    <div style="margin-bottom: 30px;" class="span7">
+      <input type="checkbox" name="auto-sync" id="sync-chk" value="option" checked="1" onclick="toggleUpdate();" disabled="true">
+      <span>Automatically update the view every 5 seconds</span>
+      <div id="lastupdate"></div>
+    </div>
+    <div class="span7" id="graph" style="width: 350px; height: 125px;">
+    </div>
+  </div>
 
   <h2>Registered masters</h2>
   <table class="zebra-striped">
@@ -240,6 +235,7 @@ On the contrary a negative number will tell to the master to remove redundant wo
       <tr>
         <th>Name</th>
         <th>Ping</th>
+        <th>MB/s</th>
         <th># Proc</th>
         <th>Finished (M/R/T)</th>
         <th>On going (M/R/T)</th>
@@ -248,15 +244,16 @@ On the contrary a negative number will tell to the master to remove redundant wo
       </tr>
     </thead>
     <tbody id="status-body">
-      {% for name, rtt, proc, finished, ongoing, files, status in status.get_masters() %}
+      {% for name, rtt, avg, proc, finished, ongoing, files, status in status.get_masters() %}
       <tr>
         <td><code><a href="#" onclick="editNode('{{ name }}');">{{ name }}</a></code></td>
         <td>{{ rtt }}</td>
+        <td>{{ avg }}</td>
         <td>{{ proc }}</td>
         <td>{{ finished }}</td>
         <td>{{ ongoing }}</td>
         <td>{{ files }}</td>
-        <td><span class="label success">{{ status }}</span></td>
+        <td>{{ status }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -266,24 +263,24 @@ On the contrary a negative number will tell to the master to remove redundant wo
   <table class="zebra-striped">
     <thead>
       <tr>
-        <th>Percentage</th>
+        <th>Elapsed time</th>
         <th>Phase</th>
         <th>Map</th>
         <th>Reduce</th>
         <th>Total</th>
         <th>Processes</th>
-        <th>ETA</th>
+        <th>avg MB/s</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="overview-body">
       <tr>
-        <td>{{ status.get_percentage() }}</td>
+        <td>{{ status.get_elapsed() }}</td>
         <td>{{ status.get_phase() }}</td>
-        <td>{{ status.map_file }} files, {{ "%.2f" % (status.map_file_size / (1024 ** 2)) }} MBs</td>
-        <td>{{ status.reduce_file }} files, {{ "%.2f" % (status.reduce_file_size / (1024 ** 2)) }} MBs</td>
-        <td>{{ status.map_file + status.reduce_file }} files, {{ "%.2f" % ((status.map_file_size + status.reduce_file_size) / (1024 ** 2)) }} MBs</td>
+        <td>{{ status.get_map_status() }}</td>
+        <td>{{ status.get_reduce_status() }}</td>
+        <td>{{ status.get_total_status() }}</td>
         <td>{{ status.get_processes() }}</td>
-        <td>{{ status.get_eta() }}</td>
+        <td>{{ status.get_average() }}</td>
       </tr>
     </tbody>
   </table>
@@ -319,9 +316,10 @@ On the contrary a negative number will tell to the master to remove redundant wo
   </table>
 
   <h2>Application Log</h2>
-  <table class="zebra-striped">
-    <thead><tr><th>Message</th></tr></thead>
-    <tbody id="applog" class="tlog">{% for msg in status.get_last_messages() %}<tr><td>{{ msg }}</td></tr>{% endfor %}</tbody>
-  </table>
+  <div style="height: 350px; overflow: auto; padding: 4px 4px 4px 4px;" id="tlog">
+    <table class="zebra-striped">
+      <tbody id="applog" class="tlog">{% for msg in status.get_last_messages() %}<tr><td>{{ msg }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

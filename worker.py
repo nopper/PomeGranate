@@ -29,26 +29,32 @@ class Worker(Logger):
             msg = self.comm.recv()
 
             if msg.command == MSG_COMPUTE_MAP:
-                result = self.mapper.execute(msg.result)
-                self.comm.send(
-                    Message(MSG_FINISHED_MAP, msg.tag, result),
-                    dest=0
-                )
+                info, result = self.mapper.execute(msg.result)
+
+                msg = Message(MSG_FINISHED_MAP, msg.tag, result)
+                msg.info = info
+
+                self.info("Map performance: %.2f" % \
+                           (info[0] / (1024 ** 2 * info[1])))
+
+                self.comm.send(msg, dest=0)
 
             elif msg.command == MSG_COMPUTE_REDUCE:
-                result = self.reducer.execute(msg.result)
-                # TODO: sistema
-                self.comm.send(
-                    Message(MSG_FINISHED_REDUCE, msg.tag, result),
-                    dest=0
-                )
+                info, result = self.reducer.execute(msg.result)
+
+                msg = Message(MSG_FINISHED_REDUCE, msg.tag, result)
+                msg.info = info
+
+                self.info("Reduce performance: %.2f" % \
+                          (info[0] / (1024 ** 2 * info[1])))
+
+                self.comm.send(msg, dest=0)
 
             elif msg.command == MSG_SLEEP:
                 time.sleep(msg.result)
 
             elif msg.command == MSG_QUIT:
                 finished = True
-                #self.info("Finished")
 
     def extract_cls(self, mname, fname):
         module = load_module(mname)

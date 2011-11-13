@@ -13,7 +13,6 @@ from threading import Lock, Thread, Semaphore, Timer, Event
 from utils import Logger, load_module, count_machines
 from message import *
 
-
 class Master(Logger, HTTPClient):
     def __init__(self, nick, fconf):
         Logger.__init__(self, "Master")
@@ -40,12 +39,11 @@ class Master(Logger, HTTPClient):
         self.lock = Lock()
         self.timer = None
         self.map_queue = []
-        self.dead_man_walking = False
+        self.end_of_stream = False
 
         self.ev_finished = Event()
 
         # Data structures for the reducers
-        self.threshold_size = int(self.conf["threshold-size"])
         self.threshold_nfile = int(self.conf["threshold-nfile"])
 
         # Everything relative to the reducers should be locked against
@@ -101,7 +99,6 @@ class Master(Logger, HTTPClient):
             self.__send_req('change-degree-ack', data=total)
 
     def _on_plz_die(self, nick, data):
-        print "*" * 100
         self.info("Exit message received. Sending termination messages")
         self.communicators.send_all(Message(MSG_QUIT, 0, None))
 
@@ -111,7 +108,7 @@ class Master(Logger, HTTPClient):
         self.close()
 
     def _on_try_later(self, nick, data):
-        self.info("Waiting 1 second before unblocking requester.")
+        #self.info("Waiting 1 second before unblocking requester.")
 
         if self.timer is None:
             self.timer = Timer(1, self._unblock_requester)
@@ -129,7 +126,6 @@ class Master(Logger, HTTPClient):
         self.__send_req('registration', immediate=True)
 
     def _on_reduce_recovery(self, nick, data):
-        print "O" * 80
         self.info("We need to recover something")
         self.reducing_files = data
 
@@ -149,7 +145,7 @@ class Master(Logger, HTTPClient):
 
     def _on_end_of_stream(self, nick, data):
         with self.lock:
-            self.dead_man_walking = True
+            self.end_of_stream = True
 
     def _on_compute_map(self, nick, data):
         self.__push_work(WorkerStatus(TYPE_MAP, nick, data))
@@ -182,18 +178,15 @@ class Master(Logger, HTTPClient):
     def __requester_thread(self):
         while not self.ev_finished.is_set():
             self.num_pending_request.acquire()
-            print "ACQUIRING"
             self.__send_req('work-request')
 
-        self.info("Requester thread exited correctly - AAAAAAAAAAAAAAAAAAAAAAA")
+        self.info("Requester thread exited correctly")
 
     def __finished(self):
         with self.lock:
-            exit = self.dead_man_walking == True and \
-                   self.num_map == 0 and             \
+            exit = self.end_of_stream == True and \
+                   self.num_map == 0 and          \
                    len(self.map_queue) == 0
-
-        print "EXIT IS", exit
 
         if exit:
             return exit and self.__finished_reduce()
@@ -232,7 +225,9 @@ class Master(Logger, HTTPClient):
             map_finished=1,
             map_ongoing=-1,
             map_file=nfiles,
-            map_file_size=filesize
+            map_file_size=filesize,
+            bandwidth=msg.info[0],
+            time=msg.info[1],
         )
 
     def __reduce_finished(self, msg, skip=False):
@@ -249,7 +244,9 @@ class Master(Logger, HTTPClient):
             reduce_finished=1,
             reduce_ongoing=-1,
             reduce_file=1,
-            reduce_file_size=msg.result[0][0]
+            reduce_file_size=msg.result[0][1],
+            bandwidth=msg.info[0],
+            time=msg.info[1],
         )
 
     def __pop_work(self):
@@ -304,18 +301,18 @@ class Master(Logger, HTTPClient):
     def __main_loop(self):
         while not self.__finished():
             idx, comm = self.communicators.receive()
+            # Here we wait until all the map are assigned and also all the
+            # assigned reduce are finished.
             msg = comm.recv()
 
             if msg.command == MSG_AVAILABLE:
-                self.debug("Worker %d is available for a new task" % idx)
-
                 if not self.__got_killed(comm):
                     self.__assign_work(idx, comm)
                 else:
                     self.info("Worker %d was killed as requested" % idx)
 
             elif msg.command == MSG_FINISHED_MAP:
-                ret = self.on_map_finished(msg.result)
+                self.on_map_finished(msg.result)
                 self.__map_finished(msg)
 
             elif msg.command == MSG_FINISHED_REDUCE:
@@ -332,10 +329,12 @@ class Master(Logger, HTTPClient):
             msg = comm.recv()
 
             if msg.command == MSG_AVAILABLE:
-                self.debug("Worker %d is available for a new task" % idx)
-
                 if not self.__got_killed(comm):
-                    self.__assign_work(idx, comm, True)
+                    # Here we need to check about the type of assignment made.
+                    # If we don't have any more reduce to assign it convenient
+                    # to get out of the cycle
+                    if self.__assign_work(idx, comm, True) == TYPE_DUMMY:
+                        to_assign -= 1
                 else:
                     self.info("Worker %d was killed as requested" % idx)
 
@@ -343,9 +342,11 @@ class Master(Logger, HTTPClient):
                 self.on_reduce_finished(msg.result)
                 self.__reduce_finished(msg, True)
                 to_assign -= 1
-                print to_assign
 
-        self.__merge_phase()
+        if not self.ev_finished.is_set():
+            self.__merge_phase()
+        else:
+            self.info("Merge was not necessary")
 
     def __merge_phase(self):
         # Let's reset all the status of the reducers
@@ -355,7 +356,6 @@ class Master(Logger, HTTPClient):
                 self.reduce_started[reduce_idx] = False
 
         for _ in xrange(self.n_machines):
-            print self.num_pending_request._Semaphore__value
             self.num_pending_request.release()
 
         self.info("Entering in the merge phase")
@@ -365,15 +365,12 @@ class Master(Logger, HTTPClient):
             msg = comm.recv()
 
             if msg.command == MSG_AVAILABLE:
-                self.debug("Worker %d is available for a new task" % idx)
-
                 if not self.__got_killed(comm):
                     self.__assign_work(idx, comm, True)
                 else:
                     self.info("Worker %d was killed as requested" % idx)
 
             elif msg.command == MSG_FINISHED_REDUCE:
-                print "HERRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRE"
                 self.on_reduce_finished(msg.result)
                 self.__reduce_finished(msg)
                 ###
@@ -407,6 +404,8 @@ class Master(Logger, HTTPClient):
 
         self.debug("Assigning %s as role to worker %d" % (MSG_TO_STR[msg], idx))
         comm.send(Message(msg, wstatus.tag, wstatus.state), dest=0)
+
+        return wstatus.type
 
     ##########################################################################
     # Public function that can be overriden
@@ -464,7 +463,6 @@ class Master(Logger, HTTPClient):
         if not files_id or len(files_id) == 1:
             return None
 
-        print "ASSIGN", reduce_idx, files_id
         return WorkerStatus(TYPE_REDUCE, reduce_idx, (reduce_idx, files_id))
 
     def on_map_finished(self, result):
@@ -472,10 +470,6 @@ class Master(Logger, HTTPClient):
 
     def on_reduce_finished(self, result):
         self.info("Final result %s" % str(result))
-
-    def input(self):
-        raise Exception("Not implemented")
-
 
 def start_mapreduce(mcls):
     if len(sys.argv) != 3:

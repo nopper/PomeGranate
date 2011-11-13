@@ -29,6 +29,7 @@ class Message(object):
         self.tag = tag
         self.command = command
         self.result = result
+        self.info = None
 
     def __str__(self):
         return "%s %s" % (MSG_TO_STR[self.command], self.result)

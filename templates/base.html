@@ -4,6 +4,7 @@
     <meta http-equiv="content-type" content="text/html; charset=utf-8">
     <script src="http://ajax.googleapis.com/ajax/libs/dojo/1.6/dojo/dojo.xd.js" djConfig="parseOnLoad: true"></script>
     {% block script %}{% endblock %}
+    <link href='http://fonts.googleapis.com/css?family=Salsa' rel='stylesheet' type='text/css'>
     <link rel="stylesheet" href="http://twitter.github.com/bootstrap/1.3.0/bootstrap.min.css" type="text/css" charset="utf-8">
         <style type="text/css">
       /* Override some defaults */
@@ -31,8 +32,7 @@
         -webkit-box-shadow: 0 1px 2px rgba(0,0,0,.15);
            -moz-box-shadow: 0 1px 2px rgba(0,0,0,.15);
                 box-shadow: 0 1px 2px rgba(0,0,0,.15);
-      }
-
+            }
       /* Page header tweaks */
       .page-header {
         background-color: #f5f5f5;
@@ -54,6 +54,10 @@
 
       .topbar .btn {
         border: 0;
+      }
+
+      h1 {
+          font-family: 'Salsa', cursive;
       }
 
       #applog {
@@ -107,7 +111,7 @@
     <div class="container">
       <div class="content">
         <div class="page-header">
-          <h1>{% block title %}PomeGranate status{% endblock %}</h1>
+          <h1>{% block title %}PomeGranate - MPI MapReduce for the masses{% endblock %}</h1>
         </div>
         <div class="row">
         {% block main %}

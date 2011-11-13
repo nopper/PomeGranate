@@ -47,6 +47,8 @@ class Handler(RequestHandler):
             self.server.on_group_died(self.nick, True)
 
     def do_GET(self):
+        self.server.status.now_time = int(time.time())
+
         if self.path == "/":
             # This should be responsible for user view
             tmpl = self.server.env.get_template('index.html')
@@ -58,7 +60,9 @@ class Handler(RequestHandler):
             self.end_headers()
             self.wfile.write(data)
         elif self.path == "/status":
-            data = json.dumps(self.server.status.__dict__, sort_keys=True)
+            res = self.server.status.serialize()
+            #print res
+            data = json.dumps(res)
 
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -197,9 +201,7 @@ class Handler(RequestHandler):
 
                 server.reduce_dict[nick] = lst
 
-            server.status.update_master_status(self.nick)
-
-
+            server.status.update_master_status(self.nick, {'status': 'online'})
         else:
             self.__send_data('change-nick')
             server.warning("Collision. Group %s already registered." % nick)
@@ -269,11 +271,9 @@ class Handler(RequestHandler):
                         self.eos_sent = True
 
             # Otherwise just tell to the worker to retry in few moments
-
-            server.info("Pending: %s" % str(server.pending_works))
-            server.info("Reducing: %s" % str(server.reduce_dict))
-            server.info("Dead list: %s" % str(server.dead_reduce_dict))
-            server.info("You have to wait my little friend")
+            #server.dbg("Pending: %s" % str(server.pending_works))
+            #server.dbg("Reducing: %s" % str(server.reduce_dict))
+            #server.dbg("Dead list: %s" % str(server.dead_reduce_dict))
             self.__send_data('try-later')
 
     def assign_merge(self):
@@ -389,6 +389,7 @@ class Handler(RequestHandler):
             server.status.map_completed += 1
             server.status.map_file += nfile
             server.status.map_file_size += size
+            server.status.add_graph_point()
 
             server.info("Map acknowledged correctly for group %s" % (nick))
         else:
@@ -407,7 +408,6 @@ class Handler(RequestHandler):
         to_delete  = data[1][1:] # NB: This is instead a sequence of [fid, ..]
 
         jobs = server.reduce_dict[nick][reduce_idx]
-        found = False
 
         opos = 0
         dpos = 0
@@ -440,6 +440,7 @@ class Handler(RequestHandler):
         server.status.reduce_completed += 1
         server.status.reduce_file += 1
         server.status.reduce_file_size += to_add[1]
+        server.status.add_graph_point()
 
         if len(to_delete) > 0:
             server.error("Failed to remove reduce files %s" % str(to_delete))
@@ -460,7 +461,7 @@ class Handler(RequestHandler):
             self.server.status.update_master_status(self.nick, status)
 
             self.server.timestamps[nick] = (PING_DONE, self.rtt)
-            server.info("Round-Trip-Time for %s is %.10f" % (self.nick, self.rtt))
+            #server.info("Round-Trip-Time for %s is %.10f" % (self.nick, self.rtt))
 
     def writable(self):
         if self.nick is None:
@@ -495,7 +496,7 @@ class Handler(RequestHandler):
                     'data': self.time_probe,
                 })
 
-                self.server.info("Requesting RTT for %s" % self.nick)
+                #self.server.info("Requesting RTT for %s" % self.nick)
 
                 self.push("HTTP/1.1 200 OK\r\n"
                         "Content-type: application/json\r\n"
@@ -544,7 +545,7 @@ class PushHandler(logging.Handler):
         self.callback(record)
 
 class MasterServer(Server, Logger):
-    def __init__(self, fconf, ip, port, handler):
+    def __init__(self, fconf, handler):
         Logger.__init__(self, "Manager")
 
         conf = json.load(open(fconf))
@@ -563,8 +564,6 @@ class MasterServer(Server, Logger):
         self.reduce_dict = defaultdict(list)
         self.dead_reduce_dict = defaultdict(list)
 
-        self.groups = range(int(conf["num-groups"]))
-        self.proc_per_group = int(conf["proc-per-group"])
         self.num_reducer = int(conf["num-reducer"])
         self.path = conf["server-path"]
 
@@ -587,14 +586,11 @@ class MasterServer(Server, Logger):
         self.timestamps = {} # nick => (send_ts:int, ts:float)
         self.hb_thread = Thread(target=self.hearthbeat)
 
-        Server.__init__(self, ip, port, handler)
+        self.addrinfo = (conf['master-host'], conf['master-port'])
+        Server.__init__(self, self.addrinfo[0], self.addrinfo[1], handler)
 
     def run(self):
-        self.info("Server started ^C to stop it")
-        self.info("Managing %d groups (%d procs per group) total: %d" % \
-                  (len(self.groups), self.proc_per_group,
-                   len(self.groups) * self.proc_per_group))
-
+        self.info("Server started on http://%s:%d ^C to stop it" % self.addrinfo)
         self.hb_thread.start()
         Server.run(self)
 
@@ -615,9 +611,9 @@ class MasterServer(Server, Logger):
 
         # Remove any pending reduce activity
         lst = self.reduce_dict[nick]
-        self.dead_reduce_dict[nick] = lst
 
         if lst: # This might be None
+            self.dead_reduce_dict[nick] = lst
             for reducer_lst in lst:
                 if reducer_lst:
                     self.status.reduce_faulted += 1
@@ -647,8 +643,7 @@ class MasterServer(Server, Logger):
 
 def main(fconf):
     try:
-        port = 8080
-        server = MasterServer(fconf, '', port, Handler)
+        server = MasterServer(fconf, Handler)
         server.run()
     except KeyboardInterrupt:
         print('^C received, shutting down server..')

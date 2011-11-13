@@ -29,6 +29,9 @@ class Logger(object):
     def info(self, str):
         self.logger.info(str, extra=self.extra)
 
+    def dbg(self, str):
+        self.logger.debug(str, extra=self.extra)
+
     def debug(self, str):
         self.logger.debug(str, extra=self.extra)
 
