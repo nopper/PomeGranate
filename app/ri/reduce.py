@@ -1,8 +1,9 @@
 import time
 import subprocess
-from utils import Logger, get_id
+from utils import get_id
+from reducer import Reducer as BaseReducer
 
-class ReducerRI(Logger):
+class ReducerRI(BaseReducer):
     def __init__(self, conf):
         super(ReducerRI, self).__init__("ReducerRI")
 

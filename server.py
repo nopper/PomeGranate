@@ -1,3 +1,7 @@
+"""
+This module contains the implementation of the Server
+"""
+
 import os
 import sys
 import json
@@ -6,9 +10,9 @@ import logging
 
 from status import ApplicationStatus
 from utils import Logger, load_module, get_file_name
-from message import WorkerStatus, TYPE_MAP, TYPE_REDUCE
+from message import WorkerStatus, TYPE_MAP
 
-from jinja2 import Environment, FileSystemLoader, Template
+from jinja2 import Environment, FileSystemLoader
 from threading import Thread, Lock, Event
 from collections import defaultdict
 from httpserver import RequestHandler, Server
@@ -21,6 +25,10 @@ CHANGE_SENT         = 2
 CHANGE_ACKNOWLEDGED = 3
 
 class Handler(RequestHandler):
+    """
+    This object handles http requests
+    """
+
     def __init__(self, conn, addr, server):
         RequestHandler.__init__(self, conn, addr, server)
 
@@ -47,6 +55,10 @@ class Handler(RequestHandler):
             self.server.on_group_died(self.nick, True)
 
     def do_GET(self):
+        """
+        The GET method is only triggered by users accessing to the monitor
+        interface. The clients only use POST method.
+        """
         self.server.status.now_time = int(time.time())
 
         if self.path == "/":
@@ -139,6 +151,10 @@ class Handler(RequestHandler):
             self.wfile.write(data)
 
     def do_POST(self):
+        """
+        The method manages masters requests by calling the appropriate _on_*
+        method of the object
+        """
         clen = self.headers.getheader('content-length')
         request = json.loads(self.rfile.read(int(clen)))
 
@@ -151,7 +167,7 @@ class Handler(RequestHandler):
         try:
             meth = getattr(self, '_on_' + type.replace('-', '_'))
         except:
-            print "No method defined for message type %s" % type
+            self.server.error("No method defined for message type %s" % type)
 
         if meth is not None:
             meth.__call__(self.server, type, nick, data)
@@ -196,7 +212,7 @@ class Handler(RequestHandler):
                 # Just prepare an empty data structure
 
                 lst = []
-                for _ in range(server.num_reducer):
+                for _ in xrange(server.num_reducer):
                     lst.append([])
 
                 server.reduce_dict[nick] = lst
@@ -207,21 +223,58 @@ class Handler(RequestHandler):
             server.warning("Collision. Group %s already registered." % nick)
 
     def _on_work_request(self, server, type, nick, data):
+        """
+        This method is responsible to return to the requestor a work to
+        execute. The method follows the following logic:
+
+         - If we are in the merge phase _assing_merge_work is executed
+         - If it is not the case _assign_generic_work is executed
+        """
         if not nick in server.masters:
             self.__send_data('registration-needed')
             return
 
-        if server.merge_phase:
-            lst = server.reduce_dict[nick]
-            if lst is not None:
-                server.status.reduce_assigned += 1
-                server.info("Assigning merg work %s" % str(lst))
+        if server.status.phase == server.status.PHASE_MERGE:
+            self._assign_merge_work(server, nick)
+        else:
+            self._assign_generic_work(server, nick)
+
+    def _assign_merge_work(self, server, nick):
+        """
+        The method is responsible to assign a reduce work which is used to
+        merge partial results to produce the final output file.
+        """
+
+        lst = server.reduce_dict[nick]
+
+        if lst is not None:
+            server.status.reduce_assigned += 1
+            server.info("Assigning merg work %s" % str(lst))
+            self.__send_data('reduce-recovery', data=lst)
+        else:
+            # Ok probably we were just lucky. Do a final check in the
+            # dead_reduce_dict and only in the event of empty list send
+            # termination message.
+            server.info("Checking for possible zombie mergers")
+
+            try:
+                zombie, lst = server.dead_reduce_dict.popitem()
+                server.info("Reassinging merge job from %s to %s -> %s" % \
+                            (zombie, nick, str(lst)))
                 self.__send_data('reduce-recovery', data=lst)
-            else:
+                server.status.reduce_assigned += 1
+
+            except KeyError:
                 server.info("Sending termination message")
                 self.__send_data('plz-die')
 
-        # If we have a work in the queue just assing it
+    def _assign_generic_work(self, server, nick):
+        """
+        The method is responsible to assign a generic (MAP or REDUCE) work
+        to the requester. In case the work_queue is empty the method
+        _check_recovery_or_sleep
+        """
+
         wstatus = server.work_queue.pop()
 
         if wstatus is not None:
@@ -234,63 +287,83 @@ class Handler(RequestHandler):
             self.__send_data('compute-map', wstatus.tag, wstatus.state)
 
         else:
-            if len(server.pending_works) == 0:
-                completed = self._reduce_completed()
-                need_recovery = self._need_recovery()
+            self._check_recovery_or_sleep(server, nick)
 
-                if completed and not need_recovery:
-                    self.assign_merge()
+    def _check_recovery_or_sleep(self, server, nick):
+        """
+        Check if we have to handle recovery situations or just sleep. In case
+        everything is fine the method is also responsible to switch to the
+        merge phase by calling _compute_merge_assignment
+        """
 
-                    lst = server.reduce_dict[nick]
-                    if lst is not None:
-                        server.status.reduce_assigned += 1
-                        self.__send_data('reduce-recovery', data=lst)
-                    else:
-                        self.__send_data('plz-die')
-
-                    return
-
-                elif completed and need_recovery:
-                    # This will converge slowly but better than nothing
-                    zombie, lst = server.dead_reduce_dict.popitem()
-                    server.info("Reassinging jobs from %s to %s -> %s" % \
-                                (zombie, nick, str(lst)))
-
-                    server.reduce_dict[nick] = lst
-                    server.status.reduce_assigned += 1
-                    self.__send_data('reduce-recovery', data=lst)
-
-                else:
-                    # If we have not any work nor pending works to acknowledge the
-                    # computation is over so it's the perfect moment for a funeral
-                    server.info("Stream completed. It is time for the reducers")
-                    server.status.phase = server.status.PHASE_REDUCE
-
-                    if not self.eos_sent:
-                        self.__send_data('end-of-stream')
-                        self.eos_sent = True
-
-            # Otherwise just tell to the worker to retry in few moments
-            #server.dbg("Pending: %s" % str(server.pending_works))
-            #server.dbg("Reducing: %s" % str(server.reduce_dict))
-            #server.dbg("Dead list: %s" % str(server.dead_reduce_dict))
+        # If there are still waiting for acks we cannot proceed
+        if len(server.pending_works) != 0:
             self.__send_data('try-later')
-
-    def assign_merge(self):
-        server = self.server
-
-        if server.merge_phase:
             return
 
-        server.merge_phase = True
+        completed = self._reduce_completed()
+        need_recovery = self._need_recovery()
+
+        # In case we finished everything and there's nothing to recover
+        # compute the merge assignment for the merge phase.
+        if completed and not need_recovery:
+            self._compute_merge_assignment()
+
+            lst = server.reduce_dict[nick]
+            if lst is not None:
+                server.status.reduce_assigned += 1
+                self.__send_data('reduce-recovery', data=lst)
+            else:
+                # Note here we can also keep the master alive without kill
+                server.info("Group %s unneeded for the merge" % nick)
+                self.__send_data('plz-die')
+
+        # In case there are still jobs that needs recovery reassign to the
+        # living requester.
+        elif completed and need_recovery:
+            # This will converge slowly but better than nothing
+            zombie, lst = server.dead_reduce_dict.popitem()
+            server.info("Reassinging jobs from %s to %s -> %s" % \
+                        (zombie, nick, str(lst)))
+
+            server.reduce_dict[nick] = lst
+            server.status.reduce_assigned += 1
+            self.__send_data('reduce-recovery', data=lst)
+
+        else:
+            # If we are here the map jobs have been exhausthed and correctly
+            # acknowledged but assigned reducers have still to return.
+            # Therefore mark this situation as end of stream and update the
+            # phase to REDUCE type.
+
+            server.status.phase = server.status.PHASE_REDUCE
+
+            if not self.eos_sent:
+                server.info("Stream completed. It is time for the reducers")
+                self.__send_data('end-of-stream')
+                self.eos_sent = True
+            else:
+                self.__send_data('try-later')
+
+    def _compute_merge_assignment(self):
+        """
+        The method is in charge of reconstruct the reduce_dict attribute which
+        will be used to derive the merge phase. The scheduling is done in a
+        round robin fashion.
+        """
+        server = self.server
+
+        if server.status.phase == server.status.PHASE_MERGE:
+            return
+
         server.status.phase = server.status.PHASE_MERGE
 
         reduce_work = []
-        for i in range(server.num_reducer):
+        for _ in range(server.num_reducer):
             reduce_work.append([])
 
         # Extract all the works from the reduce dict
-        for nick, reducers in server.reduce_dict.items():
+        for _, reducers in server.reduce_dict.items():
             for reduce_idx, reduce_lst in enumerate(reducers):
                 reduce_work[reduce_idx].extend(reduce_lst)
 
@@ -312,10 +385,6 @@ class Handler(RequestHandler):
             pos = (pos + 1) % maxnick
 
         server.info("After the merge we have %s" % str(server.reduce_dict))
-
-    def _on_all_finished(self, server, type, nick, data):
-        # TODO: remove me. Superflous
-        self.__send_data('plz-die')
 
     def _reduce_completed(self):
         """
@@ -345,6 +414,13 @@ class Handler(RequestHandler):
             return False
 
     def __send_data(self, type, nick='', data='', code=200):
+        """
+        Utility function to send back to requester a proper message
+        @param type the message type
+        @param nick the nick to use
+        @param data payload of the message
+        @param code the HTTP response code to use in the reply
+        """
         payload = json.dumps({
             "type": type,
             "nick": nick,
@@ -357,6 +433,12 @@ class Handler(RequestHandler):
         self.wfile.write(payload)
 
     def _on_map_ack(self, server, type, nick, data):
+        """
+        The method is triggered whenever a master wants to communicate that a
+        map job was succesfully computed. The payload of the message (data
+        part) will be a tuple in the form <msg-tag, list-of-files>, while the
+        list-of-files a list of tuples in the form (rid, fid, fsize)
+        """
         if nick not in server.masters:
             self.__send_data('registration-needed')
             return
@@ -367,10 +449,21 @@ class Handler(RequestHandler):
         jobs = server.pending_works[nick]
         found = False
 
+        # The first thing to do is to iterate over the pending_works structure
+        # to extract the WorkerStatus object assigned to the master
+
         for pos, wstatus in enumerate(jobs):
             if tag == wstatus.tag:
                 found = True
                 break
+
+        # If we found a proper object matching the just communicated tag we
+        # simply remove from the structure. Then all the files produced are put
+        # inside the reduce_dict structure. Every file produced will indeed be
+        # assigned to the same master with the assumption that as soon the
+        # master finish the map phase is able to start a reduce computation on
+        # the produced files without having to worry about contacting again the
+        # server to request a reduce job.
 
         if found:
             del server.pending_works[nick][pos]
@@ -399,6 +492,16 @@ class Handler(RequestHandler):
             self.__send_data('map-ack-fail', nick, data)
 
     def _on_reduce_ack(self, server, type, nick, data):
+        """
+        The method is triggered whenever a master wants to communicate that a
+        reduce job was succesfully computed. The payload structure is a 2-tuple:
+
+        - The first element is an integer telling the reduce_idx
+        - The second element is a list in where:
+          - The first element is the output file (fid, fsize)
+          - The other elements are the inputs file that can be safely deleted
+            (fid, fsize)
+        """
         if not nick in server.masters:
             self.__send_data('registration-needed')
             return
@@ -412,7 +515,6 @@ class Handler(RequestHandler):
         opos = 0
         dpos = 0
 
-        # TODO: maybe it should be optimized
         while opos < len(jobs):
             ofid, ofsize = jobs[opos]
 
@@ -447,6 +549,12 @@ class Handler(RequestHandler):
             self.__send_data('reduce-ack-fail', nick, data)
 
     def _on_keep_alive(self, server, type, nick, data):
+        """
+        The event is triggered whenever a master is replying to a keep-alive
+        request. The payload structure is a dictionary containing several keys,
+        most of them are defined in the status.py file.
+        """
+
         if not nick in server.masters:
             self.__send_data('registration-needed', code=400)
             return
@@ -461,9 +569,14 @@ class Handler(RequestHandler):
             self.server.status.update_master_status(self.nick, status)
 
             self.server.timestamps[nick] = (PING_DONE, self.rtt)
-            #server.info("Round-Trip-Time for %s is %.10f" % (self.nick, self.rtt))
+            #server.info("RTT for %s is %.10f" % (self.nick, self.rtt))
 
     def writable(self):
+        """
+        The method is called whenever it is possible to write something to the
+        socket.
+        """
+
         if self.nick is None:
             return RequestHandler.writable(self)
 
@@ -478,11 +591,11 @@ class Handler(RequestHandler):
                 'data': self.par_degree,
             })
 
-            self.push("HTTP/1.1 200 OK\r\n"
-                "Content-type: application/json\r\n"
-                "Connection: keep-alive\r\n"
-                "Content-Length: %d\r\n\r\n%s" % \
-                (len(data), data))
+            self.push("HTTP/1.1 200 OK\r\n"                \
+                      "Content-type: application/json\r\n" \
+                      "Connection: keep-alive\r\n"         \
+                      "Content-Length: %d\r\n\r\n%s" %     \
+                      (len(data), data))
 
         with self.server.lock:
             if not self.waiting_ping_response and \
@@ -498,26 +611,47 @@ class Handler(RequestHandler):
 
                 #self.server.info("Requesting RTT for %s" % self.nick)
 
-                self.push("HTTP/1.1 200 OK\r\n"
-                        "Content-type: application/json\r\n"
-                        "Connection: keep-alive\r\n"
-                        "Content-Length: %d\r\n\r\n%s" % \
-                        (len(data), data))
+                self.push("HTTP/1.1 200 OK\r\n"                \
+                          "Content-type: application/json\r\n" \
+                          "Connection: keep-alive\r\n"         \
+                          "Content-Length: %d\r\n\r\n%s" %     \
+                          (len(data), data))
 
                 self.waiting_ping_response = True
 
         return RequestHandler.writable(self)
 
 class WorkQueue(object):
+    """
+    The object is able to merge a generator and a queue and trasparently expose
+    a simple interface for retrieving objects. The generator is prioritized
+    with respect to the queue, which is used as a backup in some sense.
+    """
     def __init__(self, gen):
+        """
+        Initialize a WorkQueue instance
+        @param gen a generator
+        """
         self.generator = gen
         self.dead_queue = []
         self.last_tag = 0
 
     def push(self, item):
+        """
+        Push an item in the dead_queue. Please beware that it is not possible
+        to push None objects
+        @param item the item you want to push
+        """
+        if item is None:
+            raise ValueError("Cannot push None in the queue")
+
         self.dead_queue.append(item)
 
     def next(self):
+        """
+        Extract the next value from the WorkQueue
+        @return an object or None if the retrieve is not possible
+        """
         self.last_tag += 1
 
         try:
@@ -534,10 +668,21 @@ class WorkQueue(object):
         return None
 
     def pop(self):
+        """
+        An alias for the next method
+        @return an object
+        """
         return self.next()
 
 class PushHandler(logging.Handler):
+    """
+    Simple logging handler to manage push notifications.
+    """
     def __init__(self, callback):
+        """
+        @param callback the function you wish to call when a new record is
+                        logged
+        """
         logging.Handler.__init__(self)
         self.callback = callback
 
@@ -546,6 +691,11 @@ class PushHandler(logging.Handler):
 
 class MasterServer(Server, Logger):
     def __init__(self, fconf, handler):
+        """
+        Initialize a MasterServer instance
+        @param fconf the path to the configuration file
+        @param handler the handler object in charge of managing HTTP requests
+        """
         Logger.__init__(self, "Manager")
 
         conf = json.load(open(fconf))
@@ -567,6 +717,9 @@ class MasterServer(Server, Logger):
         self.num_reducer = int(conf["num-reducer"])
         self.path = conf["server-path"]
 
+        self.ping_max = int(conf["ping-max"])
+        self.ping_interval = int(conf["ping-interval"])
+
         # Load the input module and assing the generator to a member
         module = load_module(conf["input-module"])
         cls = getattr(module, "Input", None)
@@ -579,7 +732,6 @@ class MasterServer(Server, Logger):
 
         self.masters = {}
         self.pending_works = defaultdict(list) # nick => [work, ...]
-        self.merge_phase = False
 
         # Ping thread
         self.finished = Event()
@@ -590,13 +742,25 @@ class MasterServer(Server, Logger):
         Server.__init__(self, self.addrinfo[0], self.addrinfo[1], handler)
 
     def run(self):
-        self.info("Server started on http://%s:%d ^C to stop it" % self.addrinfo)
+        "Start the server"
+        self.info("Server started on http://%s:%d" % self.addrinfo)
         self.hb_thread.start()
         Server.run(self)
 
+    def stop(self):
+        "Stop the server"
+        self.finished.set()
+
     def on_group_died(self, nick, is_error):
-        # Possiamo magari ristartare tramite uno script bash su un altro server
-        # remoto.
+        """
+        Called whenever a master disconnected from the server
+        @param nick the nick of the master dying
+        @param is_error a boolean indicating if this was an abnormal error or
+                        whether the socket was safely shutted down.
+        """
+        # NB: Possibly we can restart the master through a bash script or
+        # provide to the final user an overridable method in order to manage
+        # the situation and apply different policies.
 
         self.status.update_master_status(nick, {'status': 'dead'})
         self.status.faults += 1
@@ -622,24 +786,29 @@ class MasterServer(Server, Logger):
         del self.masters[nick]
 
     def hearthbeat(self):
+        """
+        This method is executed in an external thread namely the hearthbeat
+        thread. The aim of the code is to periodically ping all the masters.
+        """
         while not self.finished.is_set():
-            ts = time.time()
-
             with self.lock:
                 for nick in self.masters:
                     self.timestamps[nick] = (PING_EXECUTE, 0)
 
-            time.sleep(5)
+            time.sleep(self.ping_interval)
+
+            # Here we do not do anything if a given master overflows a specific
+            # the specified limit but just warn the user about the violation.
 
             with self.lock:
                 for nick in self.masters:
-                    type, ts = self.timestamps.get(nick, (None, None))
+                    status, rtt = self.timestamps.get(nick, (None, None))
 
-                    if type is not None:
-                        print "Nick", nick, self.timestamps[nick]
-
-    def stop(self):
-        self.finished.set()
+                    if status is not None and rtt > self.ping_max:
+                        self.warning(
+                            "RTT for %s is above the limit (%.2f > %.2f)" % \
+                            (nick, rtt, self.ping_max)
+                        )
 
 def main(fconf):
     try:

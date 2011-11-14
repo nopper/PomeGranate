@@ -1,6 +1,11 @@
+"""
+This module contains the implementation of the Master object which acts both as
+a client with respect to the global server and as a server for the generic
+workers.
+"""
+
 import sys
 import json
-import time
 import random
 import urlparse
 
@@ -8,13 +13,19 @@ from mpi4py import MPI
 
 from mux import Muxer
 from status import MasterStatus
-from httptransport import *
+from httptransport import HTTPClient
 from threading import Lock, Thread, Semaphore, Timer, Event
-from utils import Logger, load_module, count_machines
+from utils import Logger, count_machines
 from message import *
 
 class Master(Logger, HTTPClient):
     def __init__(self, nick, fconf):
+        """
+        Create a Master client/server
+        @param nick a friendly name string for identification
+        @param fconf path to the configuration file
+        """
+
         Logger.__init__(self, "Master")
         HTTPClient.__init__(self)
 
@@ -64,10 +75,10 @@ class Master(Logger, HTTPClient):
         #             -> output-reduce-000001-000006, 99 bytes
         self.reducing_files = []
 
+        # It will contain boolean values indicating the status of the reducers
         self.reduce_started = []
-        # TODO: Qui magari sarebbe meglio usare il modulo array? o forse lista
-        #       dato che siamo dinamici e la taglia potrebbe aumentare.
-        for _ in range(int(self.conf['num-reducer'])):
+
+        for _ in xrange(int(self.conf['num-reducer'])):
             self.reduce_started.append(False)
             self.reducing_files.append([])
 
@@ -79,14 +90,14 @@ class Master(Logger, HTTPClient):
         self.requester_thread = Thread(target=self.__requester_thread)
         self.main_thread = Thread(target=self.__main_loop)
 
-
     ##########################################################################
-    # Utility functions to send request to the manager
+    # Events handling
     ##########################################################################
 
     def _on_change_degree(self, nick, data):
         self.info("Requested a parallelism degree change")
         # TODO: ignora se nella final phase
+
         if data < 0:
             with self.kill_lock:
                 self.units_to_kill += abs(data)
@@ -118,7 +129,7 @@ class Master(Logger, HTTPClient):
         self.num_pending_request.release()
         self.timer = None
 
-    def _on_reques_error(self, nick, data):
+    def _on_request_error(self, nick, data):
         self.error("Error in request")
 
     def _on_connected(self):
@@ -126,7 +137,7 @@ class Master(Logger, HTTPClient):
         self.__send_req('registration', immediate=True)
 
     def _on_reduce_recovery(self, nick, data):
-        self.info("We need to recover something")
+        self.info("We need to recover something %s" % str(data))
         self.reducing_files = data
 
     def _on_registration_ok(self, nick, data):
@@ -158,22 +169,24 @@ class Master(Logger, HTTPClient):
         """
         Put the request in a buffer of requests. The buffer will be flushed
         in FIFO fashion whenever it is possible.
+
+        @param type a string representing the type of the message
+        @param nick set it to None to use the current nick
+        @param data user data to send as payload to the message
+        @param immediate True to insert the request in the first position of
+                         the buffer in order to prioritize it
         """
         if nick is None:
             nick = self.nick
 
-        pr = urlparse.urlparse(self.url)
+        url = urlparse.urlparse(self.url)
         data = json.dumps({'type': type, 'nick': nick, 'data': data})
-        self._add_request("POST %s HTTP/1.1\r\n" \
-                          "Host: %s\r\n" \
-                          "Connection: keep-alive\r\n"
+        self._add_request("POST %s HTTP/1.1\r\n"               \
+                          "Host: %s\r\n"                       \
+                          "Connection: keep-alive\r\n"         \
                           "Content-Type: application/json\r\n" \
-                          "Content-Length: %d\r\n\r\n%s" % \
-                          (pr.path, pr.hostname, len(data), data), immediate)
-
-    ##########################################################################
-    # Threading
-    ##########################################################################
+                          "Content-Length: %d\r\n\r\n%s" %     \
+                          (url.path, url.hostname, len(data), data), immediate)
 
     def __requester_thread(self):
         while not self.ev_finished.is_set():
@@ -183,6 +196,11 @@ class Master(Logger, HTTPClient):
         self.info("Requester thread exited correctly")
 
     def __finished(self):
+        """
+        Check the status of the master
+        @return True if the stream is finished, all the mapper returned and
+                there is no reducer active
+        """
         with self.lock:
             exit = self.end_of_stream == True and \
                    self.num_map == 0 and          \
@@ -194,23 +212,50 @@ class Master(Logger, HTTPClient):
         return False
 
     def __finished_reduce(self):
+        "@return True if there is no reducer started"
+
         with self.reduce_lock:
             if not any(self.reduce_started):
                 return True
         return False
 
+    def __pop_work(self):
+        """
+        Extract a job from the work_queue
+        @return a WorkerStatus instance
+        """
+        with self.lock:
+            if len(self.map_queue) > 0:
+                self.num_map += 1
+                return self.map_queue.pop(0)
+
+        return WorkerStatus(TYPE_DUMMY, 0, 1)
+
     def __push_work(self, wstatus):
+        """
+        Insert a WorkerStatus object in the map_queue.
+        @param wstatus a WorkerStatus instance
+        """
         with self.lock:
             self.map_queue.append(wstatus)
 
     def __map_finished(self, msg):
+        """
+        Update the status of the master and send back ack to the server.
+
+        The method is also responsible of pushing future reduce work in the
+        reducing_files structure.
+
+        @param the Message object returned by the generic worker
+        """
+
         with self.lock:
             self.num_map -= 1
 
         self.num_pending_request.release()
 
-        # TODO: msg.result e' una lista di tuple di interi rappresentanti file di output
-        #       (rid, fid, fsize)
+        # Note: msg.result is a list of tuples representing output files
+        #       in the form: (rid, fid, fsize)
         self.__send_req('map-ack', data=(msg.tag, msg.result))
 
         nfiles = 0
@@ -231,6 +276,11 @@ class Master(Logger, HTTPClient):
         )
 
     def __reduce_finished(self, msg, skip=False):
+        """
+        Update the status of the master and send back ack to the server.
+        @param the Message object returned by the generic worker
+        """
+
         if not skip:
             with self.reduce_lock:
                 self.reduce_started[msg.tag] = False
@@ -249,37 +299,18 @@ class Master(Logger, HTTPClient):
             time=msg.info[1],
         )
 
-    def __pop_work(self):
-        with self.lock:
-            if len(self.map_queue) > 0:
-                self.num_map += 1
-                return self.map_queue.pop(0)
-
-        return WorkerStatus(TYPE_DUMMY, 0, 1)
-
-    def run(self):
-        r = urlparse.urlparse(self.url)
-        self.connect((r.hostname, r.port or 80))
-
-        # Try to find the number of processing element trying to maximize it
-        num_machines = min(self.n_machines,
-                           max(self.conf['num-mapper'],
-                               self.conf['num-reducer']))
-
-        self.info("We will use %d slots" % (num_machines))
-        self.communicators = Muxer(num_machines, ("worker.py", self.fconf))
-        self.status.nproc = num_machines
-
-        self.main_thread.start()
-        self.requester_thread.start()
-
-        HTTPClient.run(self)
-
     ##########################################################################
     # Main loop
     ##########################################################################
 
     def __got_killed(self, comm):
+        """
+        This method is called in order to accomodate parallelism degree change
+        during the computation. It returns a boolean indicating if the
+        communicator has been killed or not.
+
+        @return True if comm was killed
+        """
         to_kill = False
 
         with self.kill_lock:
@@ -294,11 +325,29 @@ class Master(Logger, HTTPClient):
             total = self.communicators.get_total()
 
             self.status.nproc = total
+
+            # Note we will send this message at every kill. This can be summed
+            # up in order to avoid useless messages traveling the network.
             self.__send_req('change-degree-ack', data=total)
 
         return to_kill
 
     def __main_loop(self):
+        """
+        This is the main loop of the application. It is organized in three
+        loops.
+
+         1. The first will continue until the stream is finished and all the
+            maps and reducers assigned will eventually return.
+         2. The second loop will start by assigning at most num-reducer reducer
+            jobs to the generic workers. This is needed to reduce all the
+            partial files that may be produced by the first loop.
+         3. Eventually a third merge cycle is started until ev_finished is set.
+            This is needed in order to have a global merging scheme that is
+            conducted with the assistance of the global server which is in
+            charge of orchestrating this phase.
+        """
+
         while not self.__finished():
             idx, comm = self.communicators.receive()
             # Here we wait until all the map are assigned and also all the
@@ -381,6 +430,12 @@ class Master(Logger, HTTPClient):
     def __assign_work(self, idx, comm, final_phase=False):
         """
         Assign a job to a generic worker
+
+        @param idx the index as returned by the communicators struct
+        @param comm the MPI Intercommunicator
+        @param final_phase True if we have to assign to the reducers all the
+                           files available if we are approaching the last phase
+        @return an integer indicating the type of work assigned
         """
 
         wstatus = self._check_threshold(final_phase)
@@ -407,20 +462,16 @@ class Master(Logger, HTTPClient):
 
         return wstatus.type
 
-    ##########################################################################
-    # Public function that can be overriden
-    ##########################################################################
-
     def _check_threshold(self, ignore_limits=False):
         """
         This function has to check the reducing_file_sizes and reducing_files
         and if a given threshold is met return a WorkerStatus representing a
         reduce operation.
+
+        @param ignore_limits True if we have to skip threshold-nfile limit
+                             check
         @return a WorkerStatus instance or None if a reduce is not required
         """
-
-        # FIXME: In case this create load unbalancing substitute with an heap
-        # or sort everything on modification.
 
         found = False
         reduce_idx = 0
@@ -432,7 +483,7 @@ class Master(Logger, HTTPClient):
                 if self.reduce_started[reduce_idx]:
                     continue
 
-                for fid, fsize in reduce_list:
+                for fid, _ in reduce_list:
                     num_files += 1
 
                     if ignore_limits:
@@ -465,10 +516,39 @@ class Master(Logger, HTTPClient):
 
         return WorkerStatus(TYPE_REDUCE, reduce_idx, (reduce_idx, files_id))
 
+    ##########################################################################
+    # Public functions
+    ##########################################################################
+
+    def run(self):
+        """
+        Start the master and connect it to the server indicated in the
+        configuration file.
+        """
+        url = urlparse.urlparse(self.url)
+        self.connect((url.hostname, url.port or 80))
+
+        # Try to find the number of processing element trying to maximize it
+        num_machines = min(self.n_machines,
+                           max(self.conf['num-mapper'],
+                               self.conf['num-reducer']))
+
+        self.info("We will use %d slots" % (num_machines))
+        self.communicators = Muxer(num_machines, ("worker.py", self.fconf))
+        self.status.nproc = num_machines
+
+        self.main_thread.start()
+        self.requester_thread.start()
+
+        HTTPClient.run(self)
+
+
     def on_map_finished(self, result):
-        return None
+        "You are free to override this"
+        pass
 
     def on_reduce_finished(self, result):
+        "You are free to override this"
         self.info("Final result %s" % str(result))
 
 def start_mapreduce(mcls):

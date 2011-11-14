@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 
-import imp
+"""
+Generic module holding the overall general behavior of the generic worker that
+can be specialized on demand depending on the received message.
+"""
+
 import sys
 import json
 import time
@@ -9,8 +13,6 @@ from mpi4py import MPI
 
 from message import *
 from utils import Logger, load_module
-
-from mapper import Mapper
 
 class Worker(Logger):
     def __init__(self, fconf):

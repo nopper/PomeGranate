@@ -29,48 +29,46 @@ After that, the handle_data() method is called and the connection is closed
 Subclasses of RequestHandler only have to override the handle_data() method
 """
 
-import asynchat, asyncore, socket, SimpleHTTPServer, select, urllib
-import posixpath, sys, cgi, cStringIO, os, traceback, shutil
+import asynchat, asyncore, socket, SimpleHTTPServer, select
+import sys, cStringIO, traceback, shutil
 
-class socketStream:
-
-    def __init__(self,sock):
+class SocketStream:
+    def __init__(self, sock, handler):
         """Initiate a socket (non-blocking) and a buffer"""
         self.sock = sock
+        self.handler = handler
         self.buffer = cStringIO.StringIO()
-        self.closed = 1   # compatibility with SocketServer
+        self.closed = 1
 
     def write(self, data):
         """Buffer the input, then send as many bytes as possible"""
         self.buffer.write(data)
+
         if self.writable():
             buff = self.buffer.getvalue()
-            # next try/except clause suggested by Robert Brown
-            try:
-                    sent = self.sock.send(buff)
-            except:
-                    # Catch socket exceptions and abort
-                    # writing the buffer
-                    sent = len(data)
 
-            # reset the buffer to the data that has not yet be sent
-            self.buffer=cStringIO.StringIO()
-            self.buffer.write(buff[sent:])
+            try:
+                sent = self.sock.send(buff)
+                self.buffer = cStringIO.StringIO()
+                self.buffer.write(buff[sent:])
+            except Exception:
+                self.handler.handle_error()
 
     def finish(self):
-        """When all data has been received, send what remains
-        in the buffer"""
+        """When all data has been received, send what remains in the buffer"""
         data = self.buffer.getvalue()
-        # send data
         while len(data):
             while not self.writable():
                 pass
-            sent = self.sock.send(data)
-            data = data[sent:]
+            try:
+                sent = self.sock.send(data)
+                data = data[sent:]
+            except Exception:
+                self.handler.handle_error()
 
     def writable(self):
         """Used as a flag to know if something can be sent to the socket"""
-        return select.select([],[self.sock],[])[1]
+        return select.select([], [self.sock], [])[1]
 
 class RequestHandler(asynchat.async_chat,
     SimpleHTTPServer.SimpleHTTPRequestHandler):
@@ -78,7 +76,7 @@ class RequestHandler(asynchat.async_chat,
     protocol_version = "HTTP/1.1"
 
     def __init__(self, conn, addr, server):
-        asynchat.async_chat.__init__(self,conn)
+        asynchat.async_chat.__init__(self, conn)
         self.client_address = addr
         self.connection = conn
         self.server = server
@@ -88,14 +86,14 @@ class RequestHandler(asynchat.async_chat,
         # set the terminator : when it is received, this means that the
         # http request is complete ; control will be passed to
         # self.found_terminator
-        self.set_terminator ('\r\n\r\n')
+        self.set_terminator('\r\n\r\n')
         self.found_terminator = self.handle_request_line
         self.rfile = cStringIO.StringIO()
         self.request_version = "HTTP/1.1"
         # buffer the response and headers to avoid several calls to select()
         self.wfile = cStringIO.StringIO()
 
-    def collect_incoming_data(self,data):
+    def collect_incoming_data(self, data):
         """Collect the data arriving on the connexion"""
         self.rfile.write(data)
 
@@ -115,14 +113,7 @@ class RequestHandler(asynchat.async_chat,
         self.finish()
 
     def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-length", len("Hello world"))
-        self.end_headers()
-        strings = ["Hello world", "world Hello", "worl HELLOd", "worDL HaLo0"]
-        import random
-        self.wfile.write(random.choice(strings))
-
-        #self.push("HTTP/1.1 200 OK\r\nContent-type: application/json\r\nContent-length: 3\r\n\r\n{1}")
+        pass
 
     def do_POST(self):
         pass
@@ -137,10 +128,10 @@ class RequestHandler(asynchat.async_chat,
         if self.command in ['GET','HEAD']:
             # if method is GET or HEAD, call do_GET or do_HEAD and finish
             method = "do_" + self.command
-            if hasattr(self,method):
-                getattr(self,method).__call__()
+            if hasattr(self, method):
+                getattr(self, method).__call__()
                 self.finish()
-        elif self.command=="POST":
+        elif self.command == "POST":
             # if method is POST, call prepare_POST, don't finish yet
             self.prepare_POST()
         else:
@@ -151,20 +142,19 @@ class RequestHandler(asynchat.async_chat,
         response and headers on the connection, then set self.wfile to
         this connection
         This is faster than sending the response line and each header
-        separately because of the calls to select() in socketStream"""
+        separately because of the calls to select() in SocketStream"""
         if self.request_version != 'HTTP/0.9':
             self.wfile.write("\r\n")
         try:
             self.start_resp = cStringIO.StringIO(self.wfile.getvalue())
-            self.wfile = socketStream(self.connection)
+            self.wfile = SocketStream(self.connection, self)
             self.copyfile(self.start_resp, self.wfile)
-        except:
-            pass
-        # FIXME please
+        except Exception, exc:
+            # FIXME please
+            raise exc
 
     def copyfile(self, source, outputfile):
-        """Copy all data between two file objects
-        Set a big buffer size"""
+        """Copy all data between two file objects Set a big buffer size"""
         shutil.copyfileobj(source, outputfile, length = 128*1024)
 
     def handle_error(self):
@@ -179,13 +169,12 @@ class RequestHandler(asynchat.async_chat,
             # if end_headers() wasn't called, wfile is a StringIO
             # this happens for error 404 in self.send_head() for instance
             self.wfile.seek(0)
-            self.copyfile(self.wfile, socketStream(self.connection))
+            self.copyfile(self.wfile, SocketStream(self.connection, self))
 
         self.reset()
 
 class Server(asyncore.dispatcher):
-    """Copied from http_server in medusa"""
-    def __init__ (self, ip, port,handler):
+    def __init__ (self, ip, port, handler):
         asyncore.dispatcher.__init__(self)
 
         self.ip = ip
@@ -196,21 +185,21 @@ class Server(asyncore.dispatcher):
         self.set_reuse_addr()
         self.bind((ip, port))
 
-        # lower this to 5 if your OS complains
         self.listen (1024)
 
     def handle_accept (self):
         try:
             conn, addr = self.accept()
         except socket.error:
-            self.log_info ('warning: server accept() threw an exception', 'warning')
+            self.log_info('warning: server accept() threw an exception',
+                          'warning')
             return
         except TypeError:
-            self.log_info ('warning: server accept() threw EWOULDBLOCK', 'warning')
+            self.log_info('warning: server accept() threw EWOULDBLOCK',
+                          'warning')
             return
-        # creates an instance of the handler class to handle the request/response
-        # on the incoming connexion
-        self.handler(conn,addr,self)
+
+        self.handler(conn, addr, self)
 
     def run(self):
         asyncore.loop(timeout=2)

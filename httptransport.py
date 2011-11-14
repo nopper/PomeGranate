@@ -1,3 +1,7 @@
+"""
+This module contains classes used for interacting with the http server
+"""
+
 import json
 import socket
 import StringIO
@@ -15,6 +19,11 @@ class HTTPRequest(object):
         self.reset()
 
     def parse_headers(self, status, headers):
+        """
+        Called whenever the header terminator string is encountered
+        @param status the HTTP status as 3-triple ('HTTP/1.1', '200', 'OK')
+        @param headers a string representing the http headers
+        """
         self.got_header = True
         self.protocol, self.reply_code, self.reply_status = status
         self.reply_code = int(self.reply_code)
@@ -26,6 +35,7 @@ class HTTPRequest(object):
             self.clen = 0
 
     def reset(self):
+        "Reset the status of the request object"
         self.body = ""
         self.got_header = False
         self.headers = None
@@ -41,6 +51,10 @@ class HTTPRequest(object):
         self.clen = 0
 
     def feed(self, data):
+        """
+        Feed the request object with new data
+        @param data a string representing new data read from a socket
+        """
         needed = max(0, self.clen - len(self.payload))
 
         if needed == 0:
@@ -62,9 +76,13 @@ class HTTPRequest(object):
             return data[needed:]
 
     def get_reply(self):
+        "@return the deserialzied JSON payload. Can throws exceptions"
         return json.loads(self.payload)
 
 class HTTPClient(asyncore.dispatcher):
+    """
+    Simple asyncore http client
+    """
     def __init__(self):
         asyncore.dispatcher.__init__(self)
 
@@ -78,6 +96,13 @@ class HTTPClient(asyncore.dispatcher):
         asyncore.loop()
 
     def _add_request(self, request, immediate=False):
+        """
+        Used to push an HTTP request/response in the FIFO buffer or requests.
+        The buffer will be flushed out periodically whenever it is possible.
+        @param request a string representing your request
+        @param immediate True if you want to put the request on top of the
+                         queue
+        """
         with self.__requests_lock:
             if immediate:
                 self.__requests.insert(0, request)
@@ -91,6 +116,11 @@ class HTTPClient(asyncore.dispatcher):
             method.__call__(*args)
 
     def __request_ready(self, request):
+        """
+        Callback triggered by the HTTPRequest object whenever a request is
+        ready to be parsed.
+        @param request the HTTPRequest object
+        """
         if request.reply_code != 200:
             self.__call('_on_request_error', request)
         else:
@@ -98,8 +128,10 @@ class HTTPClient(asyncore.dispatcher):
             self.__call('_on_' + data['type'].replace('-', '_'),
                         data['nick'], data['data'])
 
+    ##########################################################################
     # Following methods are public but just because they need to be for the
     # asyncore API
+    ##########################################################################
 
     def handle_connect(self):
         self.__call('_on_connected')
@@ -119,7 +151,7 @@ class HTTPClient(asyncore.dispatcher):
         data = self.recv(2048)
 
         if not self.__request.got_header:
-            self.__inbuffer += data # This add should be almost always against ''
+            self.__inbuffer += data
             buff = self.__inbuffer
 
             i = buff.find("\r\n\r\n")

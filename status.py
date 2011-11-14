@@ -1,7 +1,14 @@
+"""
+Simple objects used to keep track of statistics and monitoring functionalities.
+"""
 import time
 from threading import Lock
 
 class ApplicationStatus(object):
+    """
+    Keep tracks of the global status of the application. The object is used by
+    the Server object
+    """
     PHASE_MAP    = 0
     PHASE_REDUCE = 1
     PHASE_MERGE  = 2

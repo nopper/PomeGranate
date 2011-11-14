@@ -1,31 +1,39 @@
 """
-This is a really generic interface. Not optimized nor anything. Just avoid
-using this in real code. Try to implement an optimized version by your own.
+This module holds the definition for the mapper class computing the some
+function exploiting some degree of data locality
 """
 
-class Mapper(object):
-    def __init__(self, conf):
-        """
-        @param conf is a dictionary containing key,values
-        """
-        pass
+from utils import Logger
 
-    def map(self, key, value):
+class Mapper(Logger):
+    def __init__(self, conf, name="Mapper"):
         """
-        This must be implemented.
+        @param conf a dictionary corresponding to the parsed json conf file
+        @param name name to assign to the logger
         """
-        raise Exception("Implement me")
+        super(Mapper, self).__init__(name)
+        self.conf = conf
 
-    def execute(self, result):
+    def execute(self, inp):
         """
-        The result of this function will be sent through MPI so please for
-        christ's sake try to avoid using long messages, or simply override this
-        function by providing a more clever function.
+        This method must be overriden. The method must return a tuple in the
+        form of:
+            ((totsize, time_taken), [(ridx:int, fid:int, fsize:int), ..])
+
+        Where the first element:
+            (totsize, time_taken) is a performance measure used to derive
+            statistics about the computation. Namely:
+                - totsize is the cumulative size in bytes of the file produced
+                - time_taken is the time expressed in seconds in order to
+                  compute the assignment
+
+        The second element is a list of 3-tuples. Each 3-tuple contains:
+            1. ridx telling to which reducer the file produced is referred to
+            2. fid integer describing the unique identifier of the file
+            3. fsize the file size in bytes
+
+        @param input is a list containing (fname, docid) retrieved from the
+               Input module
+        @return a tuple
         """
-        out = []
-        key, value = result
-
-        for k, v in self.map(key, value):
-            out.append((k, v))
-
-        return out
+        raise Exception("Not implemented")

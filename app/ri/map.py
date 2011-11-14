@@ -1,10 +1,11 @@
 import time
 import subprocess
-from utils import Logger, get_id
+from utils import get_id
+from mapper import Mapper as BaseMapper
 
-class MapperRI(Logger):
+class MapperRI(BaseMapper):
     def __init__(self, conf):
-        super(MapperRI, self).__init__("MapperRI")
+        super(MapperRI, self).__init__(conf, "MapperRI")
 
         self.map_exec = conf["map-executable"]
         self.num_reducer = conf["num-reducer"]

@@ -11,6 +11,12 @@ from threading import Lock
 
 class Muxer(object):
     def __init__(self, nproc, args, interval=0.1):
+        """
+        @param nproc the number of MPI processes you want use
+        @param args the arguments to pass to the MPI_Spawn
+        @param interval the time you want to sleep before starting a new
+               polling cycle of reads from the intercommunicators
+        """
         self.index = 0
         self.channels = []
         self.interval = interval
@@ -20,6 +26,9 @@ class Muxer(object):
         self.spawn_more(nproc)
 
     def spawn_more(self, nproc):
+        """
+        @param Increase the number of generic workers by nproc
+        """
         new_channels = []
         for i in range(nproc):
             comm = MPI.COMM_SELF.Spawn(sys.executable,
@@ -30,17 +39,24 @@ class Muxer(object):
         with self.lock:
             self.channels.extend(new_channels)
 
-            print self.channels
-
     def remove(self, comm):
+        """
+        Remove a given Intercommunicator from the listening set
+        @param comm a MPI.Intercommunicator
+        """
         with self.lock:
             self.channels.remove(comm)
 
     def get_total(self):
+        "@return the number of MPI processes used"
         with self.lock:
             return len(self.channels)
 
     def send_all(self, msg):
+        """
+        Broadcast a given message to all the Intracommunicators
+        @param msg the message you want to broadcast
+        """
         with self.lock:
             for comm in self.channels:
                 comm.send(msg, dest=0)
