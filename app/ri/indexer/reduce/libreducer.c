@@ -8,7 +8,7 @@
 
 #include "libreducer.h"
 
-FileReader* file_reader_new(const gchar *path, int reducer_id, int file_id)
+FileReader* file_reader_new(const gchar *path, guint reducer_id, guint file_id)
 {
     FileReader *reader = g_new0(struct _FileReader, 1);
 
@@ -151,7 +151,6 @@ void reduce(const gchar *path, guint reducer_idx, guint nfile, guint *ids,
 
             stop = nfile - i - 1;
 
-            // We need to do a reallocation and remove this file
             for (j = 0; j < stop; j++,i++) {
                 readers[i] = readers[i + 1];
                 post[i] = post[i + 1];

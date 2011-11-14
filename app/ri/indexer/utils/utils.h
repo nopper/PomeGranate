@@ -16,6 +16,19 @@ struct _ExFile
 
 typedef struct _ExFile ExFile;
 
+/*! \brief Create a new ExFile object
+ *
+ * Please note that we do not provide any kind of API to free the ExFile just
+ * created. Therefore whenever you do not need the file anymore it is your
+ * responsibility to free all the internal fields. E.g.:
+ *   1. g_free(ex->filename);
+ *   2. fclose(ex->file);
+ *   3. g_free(ex);
+ *
+ * \param path the path in which the file should be created
+ * \param reducer_idx the reduce which the file refers to
+ * \return an ExFile object that should eventually be freed
+ */
 ExFile* create_file(const gchar *path, guint reducer_idx);
 
 #endif // UTILS_H

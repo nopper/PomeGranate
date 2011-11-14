@@ -47,3 +47,4 @@ ExFile* create_file(const gchar *path, guint reducer_idx)
         return ret;
     }
 }
+

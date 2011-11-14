@@ -6,19 +6,19 @@
 
 struct _Iterator
 {
-    guint num_reducers;  /* The number of reducers we are using */
-    guint counter;       /* A simple counter for tuples */
+    guint num_reducers;  /*! The number of reducers we are using */
+    guint counter;       /*! A simple counter for tuples */
 
     FILE *file;
-    ExFile **files;      /* Array of files. They are totally nun_reducers */
-    gchar **buffers;     /* Array of buffers */
+    ExFile **files;      /*! Array of files. They are totally nun_reducers */
+    gchar **buffers;     /*! Array of buffers */
 
-    GList *docids;       /* A sorted list of documents ids */
+    GList *docids;       /*! A sorted list of documents ids */
 
-    GHashTable *words;   /* The hashtable containing all words. It is inherithed
+    GHashTable *words;   /*! The hashtable containing all words. It is inherithed
                           * by the Parser object
                           */
-    GHashTable *table;   /* The hashtable containing the current occurrences
+    GHashTable *table;   /*! The hashtable containing the current occurrences
                           * It goes from docid -> occurences
                           */
 };
@@ -209,8 +209,6 @@ static void dict_push_new_word(Parser *parser, const guint docid,
     /* Let's create the dictionary */
     inner = g_hash_table_new_full(g_int_hash, g_int_equal, NULL, g_free);
 
-    //printf("%p ALLOC\n", inner);
-
     counter = g_new(guint, 1);
     *counter = 1;
 
@@ -289,7 +287,8 @@ static void parse_file(Parser *parser, guint docid,
                 {
                     parser_putword(
                         parser, docid,
-                        sb_stemmer_stem(parser->stemmer, utf8, bytes), bytes);
+                        utf8, bytes);
+                        //sb_stemmer_stem(parser->stemmer, utf8, bytes), bytes);
 
                     g_free(utf8);
                 }
@@ -330,7 +329,7 @@ Parser* parser_new(guint num_reducers, const char *input, const char *path)
     archive_read_support_compression_all(arch);
     archive_read_support_format_all(arch);
 
-    if (archive_read_open_filename(arch, input, 1024 * 1024) != ARCHIVE_OK)
+    if (archive_read_open_filename(arch, input, INPUT_BUFFER) != ARCHIVE_OK)
         return NULL;
 
     parser = g_new0(struct _Parser, 1);
@@ -339,6 +338,18 @@ Parser* parser_new(guint num_reducers, const char *input, const char *path)
     parser->path = g_strdup(path);
     parser->num_reducers = num_reducers;
     parser->stemmer = sb_stemmer_new("english", "UTF_8");
+
+    /* This is pretty cumbersome. The 3rd and 4th parameters are callbacks to
+     * manage disposition respectively of keys and values:
+     * - Destroying dict will cause g_hash_table_destroy to be called on all
+     *   the inner dicts. Keys are not destroyed!
+     *   \_ -> All the inner dict will only destroy the values of the dict
+     *         (occurrences in this case).
+     * - Destroying word_tree will destroy all the keys (terms) which are also
+     *   shared with the main dict hashtable.
+     * - Destroying docid_set will remove the keys (docids) shared with the
+     *   inner hashtables previously destroyed.
+     */
 
     parser->dict = g_hash_table_new_full(
         g_str_hash, g_str_equal,
@@ -352,7 +363,7 @@ Parser* parser_new(guint num_reducers, const char *input, const char *path)
 
     parser->docid_set = g_hash_table_new_full(
         g_int_hash, g_int_equal,
-        NULL, g_free
+        g_free, NULL
     );
 
     return parser;
@@ -406,6 +417,9 @@ void parser_run(Parser *parser, guint limit)
     guint docid;
     guint num_files = 0;
 
+    /* Here we will just iterate over the archive file by extracting each file
+     * member one by one in our buff buffer. Then the parse_file function will
+     * take care of analyzing the body of the document. */
     while (archive_read_next_header(parser->input, &entry) == ARCHIVE_OK) {
         docid = extract_docid((const char *)archive_entry_pathname(entry));
         size = archive_read_data(parser->input, &buff, MAXLEN);
@@ -415,6 +429,8 @@ void parser_run(Parser *parser, guint limit)
             parse_file(parser, docid, &buff[0], size);
             num_files++;
 
+            /* In case the memory limit is reached we flush the information on
+             * the disk */
             if (get_memory_usage() >= limit)
             {
                 parser_flushdict(parser);

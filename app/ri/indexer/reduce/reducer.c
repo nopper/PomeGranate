@@ -4,15 +4,19 @@
 #include "utils.h"
 
 struct _Context {
-    gchar *str;
-    guint length;
+    gchar *str;      /*! The term string being flushed */
+    guint length;    /*! The length of the term string  */
 
-    guint docid;
-    guint occurrence;
-    glong position;
-    guint num_tuples;
+    guint docid;      /*! The current docID */
+    guint occurrence; /*! The occurence of the term in docid */
 
-    FILE *file;
+    guint num_tuples; /*! The length of the posting list */
+    glong position;   /*! A placeholder in the file for storing the length of
+                       *  the posting list when we reach the end of the list
+                       *  itself
+                       */
+
+    FILE *file; /*! The file on which we are writing down */
 };
 
 typedef struct _Context Context;
@@ -21,6 +25,7 @@ void callback(Posting *post, Context *ctx)
 {
     gboolean same_id, same_word;
 
+    /* The reduce has finished. Flush all pending informations */
     if (post == NULL)
     {
         printf("Flushing remaining stuff\n");
@@ -35,11 +40,11 @@ void callback(Posting *post, Context *ctx)
         fwrite(&ctx->docid, sizeof(guint), 1, ctx->file);
         fwrite(&ctx->occurrence, sizeof(guint), 1, ctx->file);
         fwrite((gchar []){'\n'}, sizeof(gchar), 1, ctx->file);
-        //fclose(ctx->file);
 
         return;
     }
 
+    /* If the str is NULL we are at early stage. Initialize the context */
     if (ctx->str == NULL)
     {
         ctx->str = g_strdup(post->term->str);
@@ -65,8 +70,10 @@ void callback(Posting *post, Context *ctx)
         same_word = (post->term->str == ctx->str || g_strcmp0(post->term->str, ctx->str) == 0);
     }
 
+    /* In case of same word and docid we just update the occurrences */
     if (same_id && same_word)
         ctx->occurrence += post->occurrence;
+    /* If we have different docid we have to start another posting in the list */
     else if (!same_id && same_word)
     {
         fwrite(&ctx->docid, sizeof(guint), 1, ctx->file);
@@ -137,9 +144,10 @@ int main(int argc, char *argv[])
     reduce(argv[1], reducer_idx, argc - 3, ids,
            (reduce_callback)callback, (gpointer *)ctx);
 
+    /* The => is a marker in order to communicate with the python interpreter
+     * which is just reading the stdout of this process */
     printf("=> %s %lu\n", file->fname, ftell(file->file));
 
-    /* Yes this is lame. Better to create exfile_close or something similar */
     fclose(file->file);
     g_free(file->fname);
     g_free(file);
