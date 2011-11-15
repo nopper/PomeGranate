@@ -700,8 +700,12 @@ class MasterServer(Server, Logger):
 
         conf = json.load(open(fconf))
 
+        # Jinja2 initialization.
         self.env = Environment(loader=FileSystemLoader('templates'))
         self.status = ApplicationStatus()
+
+        # Just redirects every message logged to the application status object
+        # in order to make it available through the web interface
         self.logger.addHandler(PushHandler(self.status.push_log))
 
         # This is a dictionary structure in the form
@@ -714,29 +718,32 @@ class MasterServer(Server, Logger):
         self.reduce_dict = defaultdict(list)
         self.dead_reduce_dict = defaultdict(list)
 
+        # This is a dictionary nick => Handler instance
+        self.masters = {}
+        self.pending_works = defaultdict(list) # nick => [work, ...]
+
         self.num_reducer = int(conf["num-reducer"])
         self.path = conf["server-path"]
 
         self.ping_max = int(conf["ping-max"])
         self.ping_interval = int(conf["ping-interval"])
 
-        # Load the input module and assing the generator to a member
+        # Load the input module and assing the generator to the work_queue
         module = load_module(conf["input-module"])
         cls = getattr(module, "Input", None)
 
-        self.generator = cls(fconf).input()
-        self.work_queue = WorkQueue(self.generator)
+        generator = cls(fconf).input()
+        self.work_queue = WorkQueue(generator)
 
+        # Lock to synchronize access to the timestamps dictionary
         self.lock = Lock()
-        self.update_rtt = False
-
-        self.masters = {}
-        self.pending_works = defaultdict(list) # nick => [work, ...]
+        self.timestamps = {} # nick => (send_ts:enum, ts:float)
 
         # Ping thread
-        self.finished = Event()
-        self.timestamps = {} # nick => (send_ts:int, ts:float)
         self.hb_thread = Thread(target=self.hearthbeat)
+
+        # Event to mark the end of the server
+        self.finished = Event()
 
         self.addrinfo = (conf['master-host'], conf['master-port'])
         Server.__init__(self, self.addrinfo[0], self.addrinfo[1], handler)

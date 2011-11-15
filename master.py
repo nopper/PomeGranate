@@ -31,33 +31,55 @@ class Master(Logger, HTTPClient):
 
         self.fconf = fconf
         self.conf = json.load(open(fconf))
+
+        # This keep track of the statistics of the master. See status.py
         self.status = MasterStatus()
+
+        # Set to true if the registration was succesful
+        self.registered = False
+
+        # Marks the end of the stream. The server has no more maps to execute.
+        # Set to true whenever a end-of-stream message is received
+        self.end_of_stream = False
 
         self.comm = MPI.COMM_WORLD
         self.n_machines = count_machines(self.conf["machine-file"])
 
+        # The mux object.
         self.communicators = None
-        self.units_to_kill = 0
+
+        # The lock is used to synchronize the access to units_to_kill variable
+        # which will be accessed by two different threads, namely the one
+        # interacting with server and the one interacting with the workers
         self.kill_lock = Lock()
+        self.units_to_kill = 0
 
         self.info("We have %d available slots" % (self.n_machines))
 
         self.nick = nick
         self.url = self.conf['master-url']
 
+        # Generic lock to synchronize the access to the instance variables of
+        # the object itself. Its use should be minimized.
+        self.lock = Lock()
+
+        # Integer marking the number of maps which are currently being
+        # executed. Incremented on assignment, decremented on finish.
         self.num_map = 0
 
-        self.lock = Lock()
-        self.timer = None
+        # Simple queue of WorkerStatus(TYPE_MAP, ..) objects. Filled whenever
+        # the server returns us a compute-map message.
         self.map_queue = []
-        self.end_of_stream = False
 
+        # An event that whenever is set marks the end of the computation, set
+        # upon reception of the plz-die message
         self.ev_finished = Event()
 
-        # Data structures for the reducers
+        # Maximum number of simultaneous files that the reduce may manage in
+        # one row. Usually should be set to the MAX_FD of the system.
         self.threshold_nfile = int(self.conf["threshold-nfile"])
 
-        # Everything relative to the reducers should be locked against
+        # Simple lock that synchronize access to reduc* instance variables.
         self.reduce_lock = Lock()
 
         # This holds the triples in the sense that for each reduce we have
@@ -82,11 +104,15 @@ class Master(Logger, HTTPClient):
             self.reduce_started.append(False)
             self.reducing_files.append([])
 
-        self.registered = False
-
+        # The timer will be used to unlock the semaphore that is used as
+        # bounding mechanism for requesting new jobs to the server.
+        self.timer = None
         self.num_pending_request = Semaphore(self.n_machines)
 
-        # Threading
+        # Here we start two simple thread one in charge of executing requests
+        # and the other which is in charge of executing the main loop. There is
+        # also another thread executing asyncore.loop that manages the http
+        # communication with the server.
         self.requester_thread = Thread(target=self.__requester_thread)
         self.main_thread = Thread(target=self.__main_loop)
 
@@ -96,7 +122,7 @@ class Master(Logger, HTTPClient):
 
     def _on_change_degree(self, nick, data):
         self.info("Requested a parallelism degree change")
-        # TODO: ignora se nella final phase
+        # TODO: Ignore in the final phase
 
         if data < 0:
             with self.kill_lock:
