@@ -115,6 +115,8 @@ void reduce(const gchar *path, guint reducer_idx, guint nfile, guint *ids,
     Posting post[nfile];
     FileReader* readers[nfile], *reader;
 
+    srand(time(NULL));
+
     for (i = 0; i < nfile; i++)
     {
         reader = file_reader_new(path, reducer_idx, ids[i]);

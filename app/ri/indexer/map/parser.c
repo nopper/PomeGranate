@@ -416,6 +416,8 @@ void parser_run(Parser *parser, guint limit)
     guint docid;
     guint num_files = 0;
 
+    srand(time(NULL));
+
     /* Here we will just iterate over the archive file by extracting each file
      * member one by one in our buff buffer. Then the parse_file function will
      * take care of analyzing the body of the document. */
