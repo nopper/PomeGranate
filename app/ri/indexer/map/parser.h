@@ -44,17 +44,17 @@ typedef enum {
  * Hashtable which is used as a Set.
  */
 struct _Parser {
-    struct archive *input;      /*! The archive input file */
-    struct sb_stemmer *stemmer; /*! Stemmer */
+    struct archive *input;      /*!< The archive input file */
+    struct sb_stemmer *stemmer; /*!< Stemmer */
 
-    GHashTable *dict;      /*! The main hash table word -> table */
-    GHashTable *docid_set; /*! A hashtable used as a set to reduce space */
+    GHashTable *dict;      /*!< The main hash table word -> table */
+    GHashTable *docid_set; /*!< A hashtable used as a set to reduce space */
 
-    GList *docids;    /*! A linked list used in the final phase */
-    GTree *word_tree; /*! A balanced tree to store words in sorted way */
+    GList *docids;    /*!< A linked list used in the final phase */
+    GTree *word_tree; /*!< A balanced tree to store words in sorted way */
 
-    guint num_reducers; /*! Keep track of the number of reducers used */
-    gchar *path;        /*! Output path where files will be saved */
+    guint num_reducers; /*!< Keep track of the number of reducers used */
+    gchar *path;        /*!< Output path where files will be saved */
 };
 
 typedef struct _Parser Parser;

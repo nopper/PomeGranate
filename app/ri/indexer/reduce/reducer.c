@@ -4,16 +4,16 @@
 #include "utils.h"
 
 struct _Context {
-    gchar *str;      /*! The term string being flushed */
-    guint length;    /*! The length of the term string  */
+    gchar *str;      /*!< The term string being flushed */
+    guint length;    /*!< The length of the term string  */
 
-    guint docid;      /*! The current docID */
-    guint occurrence; /*! The occurence of the term in docid */
+    guint docid;      /*!< The current docID */
+    guint occurrence; /*!< The occurence of the term in docid */
 
-    guint num_tuples; /*! The length of the posting list */
-    glong position;   /*! A placeholder in the file for storing the length of
-                       *  the posting list when we reach the end of the list
-                       *  itself
+    guint num_tuples; /*!< The length of the posting list */
+    glong position;   /*!< A placeholder in the file for storing the length of
+                       *   the posting list when we reach the end of the list
+                       *   itself
                        */
 
     FILE *file; /*! The file on which we are writing down */

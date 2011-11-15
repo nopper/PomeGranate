@@ -6,20 +6,20 @@
 
 struct _Iterator
 {
-    guint num_reducers;  /*! The number of reducers we are using */
-    guint counter;       /*! A simple counter for tuples */
+    guint num_reducers;  /*!< The number of reducers we are using */
+    guint counter;       /*!< A simple counter for tuples */
 
     FILE *file;
-    ExFile **files;      /*! Array of files. They are totally nun_reducers */
-    gchar **buffers;     /*! Array of buffers */
+    ExFile **files;      /*!< Array of files. They are totally nun_reducers */
+    gchar **buffers;     /*!< Array of buffers */
 
-    GList *docids;       /*! A sorted list of documents ids */
+    GList *docids;       /*!< A sorted list of documents ids */
 
-    GHashTable *words;   /*! The hashtable containing all words. It is inherithed
-                          * by the Parser object
+    GHashTable *words;   /*!< The hashtable containing all words. It is
+                          *   inherithed by the Parser object
                           */
-    GHashTable *table;   /*! The hashtable containing the current occurrences
-                          * It goes from docid -> occurences
+    GHashTable *table;   /*!< The hashtable containing the current occurrences
+                          *   It goes from docid -> occurences
                           */
 };
 
@@ -287,8 +287,7 @@ static void parse_file(Parser *parser, guint docid,
                 {
                     parser_putword(
                         parser, docid,
-                        utf8, bytes);
-                        //sb_stemmer_stem(parser->stemmer, utf8, bytes), bytes);
+                        sb_stemmer_stem(parser->stemmer, utf8, bytes), bytes);
 
                     g_free(utf8);
                 }

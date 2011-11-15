@@ -10,28 +10,28 @@
  *  of the current position of the posting lists we are reading.
  */
 struct _Cursor {
-  guint postings; /*! The total number of postings tuples */
-  guint current;  /*! The current position. Always <= postings */
-  GString *term;  /*! The current term being read */
+  guint postings; /*!< The total number of postings tuples */
+  guint current;  /*!< The current position. Always <= postings */
+  GString *term;  /*!< The current term being read */
 };
 
 /*! \brief The FileReader is used to keep track of different inputs file which
  * are going to being merged
  */
 struct _FileReader {
-  FILE *file;          /*! A file pointer from which we are reading from */
-  gchar *filename;     /*! A string representing the file name */
-  struct _Cursor *cur; /*! The cursors representing a sort of position in the
-                           file */
+  FILE *file;          /*!< A file pointer from which we are reading from */
+  gchar *filename;     /*!< A string representing the file name */
+  struct _Cursor *cur; /*!< The cursors representing a sort of position in the
+                            file */
 };
 
 /*! \brief A simple object representing a *SINGLE* posting. It can be seen as a
  * triple <term, docid, occurrence
  */
 struct _Posting {
-  guint docid;      /*! The document ID */
-  guint occurrence; /*! The occurrence of the term in the document */
-  GString *term;    /*! The term itself */
+  guint docid;      /*!< The document ID */
+  guint occurrence; /*!< The occurrence of the term in the document */
+  GString *term;    /*!< The term itself */
 };
 
 typedef struct _Cursor Cursor;
