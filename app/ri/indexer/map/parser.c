@@ -7,10 +7,10 @@
 struct _Iterator
 {
     guint num_reducers;  /*!< The number of reducers we are using */
-    guint counter;       /*!< A simple counter for tuples */
+    guint *counters;     /*!< An array of counter for tuples */
+    glong *markers;      /*!< An array of positions in the file */
 
-    FILE *file;
-    ExFile **files;      /*!< Array of files. They are totally nun_reducers */
+    ExFile **files;      /*!< Array of files. They are totally num_reducers */
     gchar **buffers;     /*!< Array of buffers */
 
     GList *docids;       /*!< A sorted list of documents ids */
@@ -86,15 +86,18 @@ static void parser_reset(Parser *parser)
 
 static void write_tuple(const guint *docid, Iterator *iter)
 {
+    guint i;
     const guint *occurr = g_hash_table_lookup(iter->table, docid);
 
     if (!occurr)
         return;
 
-    fwrite(docid, sizeof(guint), 1, iter->file);
-    fwrite(occurr, sizeof(guint), 1, iter->file);
+    i = (*docid % iter->num_reducers);
 
-    iter->counter++;
+    fwrite(docid, sizeof(guint), 1, iter->files[i]->file);
+    fwrite(occurr, sizeof(guint), 1, iter->files[i]->file);
+
+    iter->counters[i] ++;
 }
 
 static inline gint guint_compare(guint *a, guint *b)
@@ -106,28 +109,39 @@ static inline gint guint_compare(guint *a, guint *b)
 
 static gboolean traverse_node(gchar *word, gchar *_, Iterator *iter)
 {
+    guint i;
     FILE *file;
-    glong marker;
     size_t len = strlen(word);
 
     iter->table = g_hash_table_lookup(iter->words, word);
-    iter->file = iter->files[(g_str_hash(word) % iter->num_reducers)]->file;
 
-    fwrite((guint *)&len, sizeof(guint), 1, iter->file);
-    fwrite(word, sizeof(gchar), len, iter->file);
+    /* Here we should do a doc-based partition */
 
-    marker = ftell(iter->file);
-    fwrite((guint []){0}, sizeof(guint), 1, iter->file);
+    for (i = 0; i < iter->num_reducers; i++)
+    {
+        file = iter->files[i]->file;
 
+        fwrite((guint *)&len, sizeof(guint), 1, file);
+        fwrite(word, sizeof(gchar), len, file);
 
-    iter->counter = 0;
+        iter->markers[i] = ftell(file);
+        fwrite((guint []){0}, sizeof(guint), 1, file);
+
+        iter->counters[i] = 0;
+    }
+
     g_list_foreach(iter->docids, (GFunc)write_tuple, iter);
 
-    fseek(iter->file, marker, 0);
-    fwrite(&iter->counter, sizeof(guint), 1, iter->file);
-    fseek(iter->file, 0, 2);
+    for (i = 0; i < iter->num_reducers; i++)
+    {
+        file = iter->files[i]->file;
 
-    fwrite((gchar []){'\n'}, sizeof(gchar), 1, iter->file);
+        fseek(file, iter->markers[i], 0);
+        fwrite(&iter->counters[i], sizeof(guint), 1, file);
+        fseek(file, 0, 2);
+
+        fwrite((gchar []){'\n'}, sizeof(gchar), 1, file);
+    }
 
     return FALSE;
 }
@@ -137,9 +151,10 @@ static void parser_flushdict(Parser *parser)
     int i;
     Iterator iter;
 
-    iter.file = NULL;
     iter.files = g_new0(ExFile *, parser->num_reducers);
     iter.buffers = g_new0(gchar *, parser->num_reducers);
+    iter.markers = g_new0(glong, parser->num_reducers);
+    iter.counters = g_new0(guint, parser->num_reducers);
 
     for (i = 0; i < parser->num_reducers; i++)
     {
@@ -175,6 +190,8 @@ static void parser_flushdict(Parser *parser)
 
     g_free(iter.files);
     g_free(iter.buffers);
+    g_free(iter.markers);
+    g_free(iter.counters);
     g_list_free(iter.docids);
 
     parser_reset(parser);
