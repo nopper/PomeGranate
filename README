@@ -1,0 +1,40 @@
+# What is GrapeFruit
+
+GrapeFruit is just an experiment in order to provide a fault tolerant
+MapReduce framework built on top of MPI and the HTTP protocol, through
+the use of Python programming language.
+
+In the source tarball we also provide a simple application of the
+framework used to create a TF-IDF index of Wikipedia.
+
+# Requirements
+
+In order to compile and succesfully run this application you need:
+
+  - A Python interpreter targeting 2.x series
+  - A C compiler preferably GNU GCC
+  - An MPI implementation.
+
+The application was tested under:
+
+  - An Intel Core 2 (T7600) Linux machine with 3.1.0-x86\_64 kernel
+  - Python 2.7.2
+  - gcc (GCC) 4.6.2
+  - mpich2 1.4-1
+
+## Python requirements
+
+In order to install the proper requirements for the Python interpreter I
+really suggest you to use virtualenv and pip utilities.
+
+  - pip install mpi4py (1.2.2 - used for coordinating workers)
+  - pip install jinja2 (2.6 - used for the Web interface)
+
+## Needed libraries
+
+In order to compile the C implementation of the indexer you need
+libarchive and glib2. Take as reference your package manager manual.
+
+  - libarchive (2.8.5-2 - http://libarchive.googlecode.com/)
+  - glib2 (2.30.1-1 - http://www.gtk.org/)
+
