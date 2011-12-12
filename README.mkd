@@ -1,6 +1,6 @@
-# What is GrapeFruit
+# What is PomeGranate
 
-GrapeFruit is just an experiment in order to provide a fault tolerant
+PomeGranate is just an experiment in order to provide a fault tolerant
 MapReduce framework built on top of MPI and the HTTP protocol, through
 the use of Python programming language.
 
