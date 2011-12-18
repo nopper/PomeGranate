@@ -1,0 +1,2 @@
+#!/bin/sh
+mpiexec -np 1 python $*
