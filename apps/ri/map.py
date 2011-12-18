@@ -21,7 +21,7 @@ class MapperRI(BaseMapper):
                 str(self.num_reducer), archive, self.output_path,
                 str(self.limit_size)]
 
-        self.info("Processing arhive ID=%d name=%s" % (archiveid, archive))
+        self.info("Processing archive ID=%d name=%s" % (archiveid, archive))
         self.info("Executing %s" % str(args))
 
         totsize = 0
