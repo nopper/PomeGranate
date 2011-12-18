@@ -1,0 +1,3 @@
+[submodule "fsdfs"]
+	path = fsdfs
+	url = https://github.com/sylvinus/fsdfs.git
