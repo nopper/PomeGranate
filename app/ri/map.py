@@ -1,7 +1,7 @@
 import time
 import subprocess
-from utils import get_id
-from mapper import Mapper as BaseMapper
+from pomegranate.utils import get_id
+from pomegranate.mapper import Mapper as BaseMapper
 
 class MapperRI(BaseMapper):
     def __init__(self, conf):

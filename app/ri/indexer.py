@@ -1,8 +1,8 @@
 import os
 import os.path
 
-from input import Input
-from master import Master, start_mapreduce
+from pomegranate.input import Input
+from pomegranate.master import Master, start_mapreduce
 
 class InputRI(Input):
     def __init__(self, fconf):

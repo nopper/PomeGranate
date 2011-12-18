@@ -1,7 +1,7 @@
 import time
 import subprocess
-from utils import get_id
-from reducer import Reducer as BaseReducer
+from pomegranate.utils import get_id
+from pomegranate.reducer import Reducer as BaseReducer
 
 class ReducerRI(BaseReducer):
     def __init__(self, conf):
