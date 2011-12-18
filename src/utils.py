@@ -62,6 +62,7 @@ def load_module(mod):
     @param mod a str representing the module (e.g. 'foo.spam')
     """
     path = sys.path
+    path.insert(0, os.getcwd())
 
     for mname in mod.split('.'):
         mfile, mpath, mdesc = imp.find_module(mname, path)
