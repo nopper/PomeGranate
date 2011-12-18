@@ -7,6 +7,7 @@ workers.
 import sys
 import json
 import random
+import os.path
 import urlparse
 
 from mpi4py import MPI
@@ -560,7 +561,15 @@ class Master(Logger, HTTPClient):
                                self.conf['num-reducer']))
 
         self.info("We will use %d slots" % (num_machines))
-        self.communicators = Muxer(num_machines, ("worker.py", self.fconf))
+
+        filename = 'worker' + __file__[__file__.rindex('.'):]
+        filename = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), filename
+        )
+
+        self.debug("Using %s as spawner" % filename)
+
+        self.communicators = Muxer(num_machines, (filename, self.fconf))
         self.status.nproc = num_machines
 
         self.main_thread.start()

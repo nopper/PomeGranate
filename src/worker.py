@@ -11,8 +11,8 @@ import time
 
 from mpi4py import MPI
 
-from message import *
-from utils import Logger, load_module
+from pomegranate.message import *
+from pomegranate.utils import Logger, load_module
 
 class Worker(Logger):
     def __init__(self, fconf):
