@@ -701,12 +701,10 @@ class MasterServer(Server, Logger):
         conf = json.load(open(fconf))
 
         # Jinja2 initialization.
-        self.env = Environment(loader=FileSystemLoader('templates'))
+        tmpl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 'templates')
+        self.env = Environment(loader=FileSystemLoader(tmpl_path))
         self.status = ApplicationStatus()
-
-        # Just redirects every message logged to the application status object
-        # in order to make it available through the web interface
-        self.logger.addHandler(PushHandler(self.status.push_log))
 
         # This is a dictionary structure in the form
         # reduce_dict["group-name"] = [
@@ -750,6 +748,11 @@ class MasterServer(Server, Logger):
 
     def run(self):
         "Start the server"
+
+        # Just redirects every message logged to the application status object
+        # in order to make it available through the web interface
+        self.logger.addHandler(PushHandler(self.status.push_log))
+
         self.info("Server started on http://%s:%d" % self.addrinfo)
         self.hb_thread.start()
         Server.run(self)
@@ -824,10 +827,3 @@ def main(fconf):
     except KeyboardInterrupt:
         print('^C received, shutting down server..')
         server.stop()
-
-if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print "Usage: %s <config-file>" % (sys.argv[0])
-        sys.exit(-1)
-
-    main(sys.argv[1])

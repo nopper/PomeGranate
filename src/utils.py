@@ -14,7 +14,10 @@ import logging.config
 
 from mpi4py import MPI
 
-logging.config.fileConfig('logconfig.ini')
+try:
+    logging.config.fileConfig('logconfig.ini')
+except:
+    print("Cannot find logconfig.ini in %s" % os.getcwd())
 
 class RandomNameIntegerSequence(tempfile._RandomNameSequence):
     "The class is used as base for generating unique file IDs"
@@ -29,8 +32,8 @@ class Logger(object):
         Initialize the logger
         @param param name the name of the logger object
         """
+
         self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.DEBUG)
 
         self.extra = {
             'clientip': socket.gethostbyname(socket.gethostname()),
