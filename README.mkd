@@ -27,8 +27,8 @@ The application was tested under:
 In order to install the proper requirements for the Python interpreter I
 really suggest you to use virtualenv and pip utilities.
 
-  - pip install mpi4py (1.2.2 - used for coordinating workers)
-  - pip install jinja2 (2.6 - used for the Web interface)
+  - `pip install mpi4py` (1.2.2 - used for coordinating workers)
+  - `pip install jinja2` (2.6 - used for the Web interface)
 
 If you want you can optionally install the fsdfs module (fucking simple
 distributed filesystem) in order to get some performance boost in case
@@ -44,3 +44,96 @@ libarchive and glib2. Take as reference your package manager manual.
 
   - libarchive (2.8.5-2 - http://libarchive.googlecode.com/)
   - glib2 (2.30.1-1 - http://www.gtk.org/)
+
+## Fetching the sources
+
+In order to fetch the software with all the dependencies just type in your
+console:
+
+    $ git clone git://github.com/nopper/PomeGranate.git
+    $ cd PomeGranate
+
+## Installation
+
+I strongly suggest you to use virtualenv in order to test PomeGranate without
+impacting your python installation globally:
+
+    $ virtualenv env
+    $ . env/bin/activate
+    New python executable in env/bin/python
+    Installing setuptools............done.
+    Installing pip...............done.
+    $ python setup.py install
+    [...]
+
+### Installing FSDFS - Optional
+
+In case you don't have a distributed FS like NFS or AFS you can simply use
+FSDFS which is supported by PomeGranate:
+
+    $ git submodule init
+    $ git submodule update
+    $ cd lib/fsdfs
+    $ python setup.py install
+
+## Running the default ri application
+
+In the source distribution you will find a simple MapReduce application for
+Reverse Index creation (here comes the name). A part of the application is
+developed in C language. In order to build the mapper and the reducer
+components you need `make`, `gcc`, `glib-2.0`, `libarchive`:
+
+    $ cd apps/ri/indexer/
+    $ make
+
+The Makefile is hardcoded so if you are not able to get a clean build try
+to play a little bit with the parameters. After the build you should get
+two executables namely:
+
+  - `apps/ri/indexer/map/mapper`
+  - `apps/ri/indexer/reduce/reducer`
+
+The absolute path to these executables should match the `map-executable`
+and `reduce-executable` parameters in the JSON configuration file. Another
+parameter you would like to change is `limit-size` an integer value which
+limits the maximum number of KB that the mapper will use to keep in RAM
+all the information before flushing all the data to an output file.
+
+## Configuration file
+
+The configuration file is a simple JSON file that express various parameters
+that will be used by various parts of the application. The parameters are:
+
+  - `num-mapper`: integer indicating the number of mapper to use
+  - `num-reducer`: integer indicating the number of reducer to use
+  - `machine-file`: string indicating the machine file to use for deploying
+                    workers through MPI process abstraction
+  - `main-module`: string indicating the Python main module to use
+  - `input-module`: string indicating the Python Input module to use
+  - `map-module`: string indicating the Python Map module to use
+  - `reduce-module`: string indicating the Python Reduce module to use
+  - `threshold-nfile`: integer indicating the maximum number of files that
+                       can be reduced in a row.
+  - `ping-interval`: integer indicating the interval in seconds between two
+                     consecutive ping probes.
+  - `master-host`: string indicating the IP on which the server will bind to
+  - `master-port`: integer indicating the port on which the server will
+                   listen to
+  - `master-url`: string indicating a URI in the form
+                  `http://<master-host>:<master-port`
+  - `datadir`: a string indicating the directory where all files (both
+               inputs and outputs) are be stored
+  - `input-prefix`: a string indicating a suffix for the datadir parameter.
+                    All the input files should be located in
+                     `<datadir>/<input-prefix>`.
+  - `output-prefix`: a string indicating a suffix for the datadir parameter.
+                     All the output files will be stored inside
+                     `<datadir>/<output-prefix>`.
+
+The following parameters are related to the DFS module:
+
+  - `dfs-enabled`: boolean indicating if DFS support will be used
+  - `dfs-startport`: integer indicating a TCP port. Every worker will listen
+                     onto `startport` + `unique_worker_id`.
+  - `dfs-conf`: a dictionary which include valid parameters for configuring
+                FSDFS nodes.
