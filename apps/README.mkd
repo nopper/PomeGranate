@@ -15,11 +15,11 @@ There are two template files:
 
 You can run the server with:
 
-  $ pmgr-server server-index.conf
+    $ pmgr-server server-index.conf
 
 The same applies for the clients:
 
-  $ pmgr-client ri/indexer.py mynick client-index.conf
+    $ pmgr-client ri/indexer.py mynick client-index.conf
 
 ## Static configuration set
 
@@ -29,8 +29,8 @@ same as the one given in the section above.
 
 Server spawning:
 
-  $ pmgr-server static.conf
+    $ pmgr-server static.conf
 
 Client spawning:
 
-  $ pmgr-client ri/indexer.py mynick static.conf
+    $ pmgr-client ri/indexer.py mynick static.conf
