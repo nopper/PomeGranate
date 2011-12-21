@@ -267,8 +267,45 @@ static void parser_putword(Parser *parser, const guint docid,
     g_hash_table_insert(inner, docid_key, value);
 }
 
+static gboolean text_validate_utf8(const gchar *text, gssize text_len,
+                                   GString **str, gsize *valid_len)
+{
+    gsize len_to_validate;
+
+    g_return_val_if_fail (text, FALSE);
+
+    len_to_validate = text_len >= 0 ? text_len : strlen (text);
+
+    if (len_to_validate > 0) {
+        const gchar *end = text;
+
+        /* Validate string, getting the pointer to first non-valid character
+         *  (if any) or to the end of the string. */
+        g_utf8_validate (text, len_to_validate, &end);
+        if (end > text) {
+            /* If str output required... */
+            if (str) {
+                /* Create string to output if not already as input */
+                *str = (*str == NULL ?
+                        g_string_new_len (text, end - text) :
+                        g_string_append_len (*str, text, end - text));
+            }
+
+            /* If utf8 len output required... */
+            if (valid_len) {
+                *valid_len = end - text;
+            }
+
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+
 static void parse_file(Parser *parser, guint docid,
-                       const char *buff, size_t len)
+                       const char *buff, size_t buff_len)
 {
     guint pos = 0;
 
@@ -287,14 +324,17 @@ static void parse_file(Parser *parser, guint docid,
     length = 0;
 
     started = FALSE;
-    gchar *str = g_utf8_normalize(buff, len, G_NORMALIZE_NFKD);
 
-    if (!str)
-      return;
+    gsize len;
+    GString *str = g_string_new(NULL);
 
-    len = strlen(str);
+    if (!text_validate_utf8(buff, buff_len, &str, &len))
+    {
+        g_string_free(str, TRUE);
+        return;
+    }
 
-    for(p = str; pos < len; p = g_utf8_next_char(p), pos++)
+    for(p = str->str; pos < len; p = g_utf8_next_char(p), pos++)
     {
         c = g_utf8_get_char(p);
         type = get_word_type(c);
@@ -339,7 +379,7 @@ static void parse_file(Parser *parser, guint docid,
         word[length - 1] = c;
     }
 
-    g_free(str);
+    g_string_free(str, TRUE);
 }
 
 static inline guint extract_docid(const char *filename)
