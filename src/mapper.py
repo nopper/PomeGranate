@@ -3,6 +3,7 @@ This module holds the definition for the mapper class computing the some
 function exploiting some degree of data locality
 """
 
+import os.path
 from utils import Logger
 
 class Mapper(Logger):
@@ -12,7 +13,20 @@ class Mapper(Logger):
         @param name name to assign to the logger
         """
         super(Mapper, self).__init__(name)
+
         self.conf = conf
+
+        self.datadir = self.conf['datadir']
+        self.input_prefix = self.conf['input-prefix']
+        self.output_prefix = self.conf['output-prefix']
+
+        self.output_path = os.path.join(
+            self.datadir,
+            self.output_prefix
+        )
+
+    def setup(self, vfs):
+        self.vfs = vfs
 
     def execute(self, inp):
         """

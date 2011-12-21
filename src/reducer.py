@@ -4,6 +4,7 @@ executing the reduce function both on the results of the mappers and on the
 results of the reducer. Therefore it should be able to re-reduce output files
 """
 
+import os.path
 from utils import Logger
 
 class Reducer(Logger):
@@ -13,7 +14,20 @@ class Reducer(Logger):
         @param name name to assign to the logger
         """
         super(Reducer, self).__init__(name)
+
         self.conf = conf
+
+        self.datadir = self.conf['datadir']
+        self.input_prefix = self.conf['input-prefix']
+        self.output_prefix = self.conf['output-prefix']
+
+        self.output_path = os.path.join(
+            self.datadir,
+            self.output_prefix
+        )
+
+    def setup(self, vfs):
+        self.vfs = vfs
 
     def execute(self, result):
         """

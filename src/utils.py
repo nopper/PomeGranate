@@ -98,7 +98,7 @@ def get_file_name(path, reduce_idx, fid):
     @param fid the unique file ID
     @return a str representing the full path to the file
     """
-    return os.path.join(path, "output-r{:06d}-p{:d}".format(reduce_idx, fid))
+    return os.path.join(path, "output-r{:06d}-p{:018d}".format(reduce_idx, fid))
 
 def count_machines(fname):
     """

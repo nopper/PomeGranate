@@ -38,6 +38,7 @@ class Master(Logger, HTTPClient):
 
         # Set to true if the registration was succesful
         self.registered = False
+        self.unique_id = -1
 
         # Marks the end of the stream. The server has no more maps to execute.
         # Set to true whenever a end-of-stream message is received
@@ -173,7 +174,10 @@ class Master(Logger, HTTPClient):
                 self.error("Already registered")
             else:
                 self.registered = True
-                self.info("Succesfully registered")
+                self.unique_id = data
+
+                self.info("Succesfully registered with ID=%d" % data)
+                self.__inner_start()
 
     def _on_change_nick(self, nick, data):
         self.warning("Nick already used. Randomizing nick for your fun")
@@ -555,6 +559,11 @@ class Master(Logger, HTTPClient):
         url = urlparse.urlparse(self.url)
         self.connect((url.hostname, url.port or 80))
 
+        HTTPClient.run(self)
+
+    def __inner_start(self):
+        self.info("Starting requester and main thread")
+
         # Try to find the number of processing element trying to maximize it
         num_machines = min(self.n_machines,
                            max(self.conf['num-mapper'],
@@ -569,14 +578,11 @@ class Master(Logger, HTTPClient):
 
         self.debug("Using %s as spawner" % filename)
 
-        self.communicators = Muxer(num_machines, (filename, self.fconf))
+        self.communicators = Muxer(self.unique_id, num_machines, (filename, self.fconf))
         self.status.nproc = num_machines
 
         self.main_thread.start()
         self.requester_thread.start()
-
-        HTTPClient.run(self)
-
 
     def on_map_finished(self, result):
         "You are free to override this"

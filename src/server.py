@@ -3,7 +3,6 @@ This module contains the implementation of the Server
 """
 
 import os
-import sys
 import json
 import time
 import logging
@@ -16,6 +15,12 @@ from jinja2 import Environment, FileSystemLoader
 from threading import Thread, Lock, Event
 from collections import defaultdict
 from httpserver import RequestHandler, Server
+
+try:
+    from fsdfs.filesystem import Filesystem
+    DFS_AVAILABLE = True
+except ImportError:
+    DFS_AVAILABLE = False
 
 PING_DONE = 1
 PING_EXECUTE = 2
@@ -198,8 +203,10 @@ class Handler(RequestHandler):
             self.nick = nick
             server.masters[nick] = self
 
-            self.__send_data('registration-ok')
-            server.info("Group %s succesfully registered" % nick)
+            server.last_id += 1
+            self.__send_data('registration-ok', data=server.last_id)
+            server.info("Group %s ID=%d succesfully registered" % \
+                        (nick, server.last_id))
 
             if nick in server.dead_reduce_dict:
                 lst = server.dead_reduce_dict[nick]
@@ -249,7 +256,7 @@ class Handler(RequestHandler):
 
         if lst is not None:
             server.status.reduce_assigned += 1
-            server.info("Assigning merg work %s" % str(lst))
+            server.info("Assigning merge work %s" % str(lst))
             self.__send_data('reduce-recovery', data=lst)
         else:
             # Ok probably we were just lucky. Do a final check in the
@@ -380,6 +387,8 @@ class Handler(RequestHandler):
             if len(files) > 1:
                 server.reduce_dict[nicks[pos]] = jobs
             else:
+                if len(files) == 1:
+                    server.info("Output file for %s => %s" % (nicks[pos], files[0]))
                 server.reduce_dict[nicks[pos]] = None
 
             pos = (pos + 1) % maxnick
@@ -524,8 +533,13 @@ class Handler(RequestHandler):
 
                 if ofid == dfid:
                     fname = get_file_name(server.path, reduce_idx, dfid)
-                    server.info("Removing map output file %s" % fname)
-                    os.unlink(fname)
+
+                    if server.use_dfs:
+                        server.info("Nuking map file %s from DFS" % fname)
+                        server.work_queue.fs.nukeFile(fname)
+                    else:
+                        server.info("Removing map output file %s" % fname)
+                        os.unlink(fname)
 
                     del to_delete[dpos]
                     del jobs[opos]
@@ -535,6 +549,9 @@ class Handler(RequestHandler):
 
                 dpos += 1
             opos += 1
+
+        if server.status.phase == server.status.PHASE_MERGE:
+            server.info("Output file for %s => %s" % (nick, tuple(to_add)))
 
         jobs.append(tuple(to_add))
 
@@ -627,14 +644,29 @@ class WorkQueue(object):
     a simple interface for retrieving objects. The generator is prioritized
     with respect to the queue, which is used as a backup in some sense.
     """
-    def __init__(self, gen):
+    def __init__(self, logger, gen, use_dfs=False, dfs_conf=None):
         """
         Initialize a WorkQueue instance
+        @param logger a logger object
         @param gen a generator
+        @param use_dfs boolean indicating whether to use a DFS or not
+        @param dfs_conf a dictionary containing the necessary parameters for
+                        the DFS Master initialization.
         """
+        self.logger = logger
         self.generator = gen
         self.dead_queue = []
         self.last_tag = 0
+        self.use_dfs = use_dfs
+
+        if use_dfs and not DFS_AVAILABLE:
+            raise Exception("You need to install fsdfs in order to use the" \
+                            " distributed mode. Otherwise just toggle it "  \
+                            "off from the configuration file")
+        elif use_dfs:
+            print dfs_conf
+            self.datadir = dfs_conf['datadir']
+            self.fs = Filesystem(dfs_conf)
 
     def push(self, item):
         """
@@ -655,17 +687,23 @@ class WorkQueue(object):
         self.last_tag += 1
 
         try:
-            value = self.generator.next()
+            # Here value is a tuple (path to file, file id)
+            fname, fid = self.generator.next()
+
+            if self.use_dfs:
+                self.logger.info("Publishing file '%s' from '%s'" % \
+                                 (fname, self.datadir))
+
+                self.fs.importFile(os.path.join(self.datadir, fname), fname)
+
+            return WorkerStatus(TYPE_MAP, self.last_tag, (fname, fid))
+
         except StopIteration:
             if self.dead_queue:
                 value = self.dead_queue.pop(0)
+                return WorkerStatus(TYPE_MAP, self.last_tag, value)
             else:
-                value = None
-
-        if value is not None:
-            return WorkerStatus(TYPE_MAP, self.last_tag, value)
-
-        return None
+                return None
 
     def pop(self):
         """
@@ -718,20 +756,34 @@ class MasterServer(Server, Logger):
 
         # This is a dictionary nick => Handler instance
         self.masters = {}
+        self.last_id = -1
         self.pending_works = defaultdict(list) # nick => [work, ...]
-
-        self.num_reducer = int(conf["num-reducer"])
-        self.path = conf["server-path"]
 
         self.ping_max = int(conf["ping-max"])
         self.ping_interval = int(conf["ping-interval"])
+        self.num_reducer = int(conf["num-reducer"])
 
         # Load the input module and assing the generator to the work_queue
         module = load_module(conf["input-module"])
         cls = getattr(module, "Input", None)
 
+        # Some code for the DFS
         generator = cls(fconf).input()
-        self.work_queue = WorkQueue(generator)
+        self.use_dfs = use_dfs = conf['dfs-enabled']
+
+        if use_dfs:
+            dfsconf = conf['dfs-conf']
+            dfsconf['host'] = dfsconf['master']
+
+            self.path = conf['output-prefix']
+        else:
+            dfsconf = None
+
+            self.path = os.path.join(
+                os.path.join(conf['datadir'], conf['output-prefix'])
+            )
+
+        self.work_queue = WorkQueue(self.logger, generator, use_dfs, dfsconf)
 
         # Lock to synchronize access to the timestamps dictionary
         self.lock = Lock()
@@ -753,6 +805,10 @@ class MasterServer(Server, Logger):
         # in order to make it available through the web interface
         self.logger.addHandler(PushHandler(self.status.push_log))
 
+        if self.work_queue.use_dfs:
+            self.info("Starting Distributed Filesystem")
+            self.work_queue.fs.start()
+
         self.info("Server started on http://%s:%d" % self.addrinfo)
         self.hb_thread.start()
         Server.run(self)
@@ -760,6 +816,9 @@ class MasterServer(Server, Logger):
     def stop(self):
         "Stop the server"
         self.finished.set()
+
+        if self.work_queue.use_dfs:
+            self.work_queue.fs.stop()
 
     def on_group_died(self, nick, is_error):
         """

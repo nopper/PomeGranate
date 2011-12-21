@@ -4,6 +4,7 @@ stream that should feed the map-reduce computation
 """
 
 import json
+import os.path
 from utils import Logger
 
 class Input(Logger):
@@ -18,6 +19,14 @@ class Input(Logger):
         """
         super(Input, self).__init__(name)
         self.conf = json.load(open(fconf))
+
+        self.datadir = self.conf['datadir']
+        self.input_prefix = self.conf['input-prefix']
+
+        self.input_path = os.path.join(
+            self.datadir,
+            self.input_prefix
+        )
 
     def input(self):
         """
