@@ -30,6 +30,13 @@ really suggest you to use virtualenv and pip utilities.
   - pip install mpi4py (1.2.2 - used for coordinating workers)
   - pip install jinja2 (2.6 - used for the Web interface)
 
+If you want you can optionally install the fsdfs module (fucking simple
+distributed filesystem) in order to get some performance boost in case
+you are using a slow distributed filesystem like NFS. To do it simply
+point your shell into `lib/fsdfs` and type `python setup.py install`.
+Of course you have to enable the specific toggle option in the json
+configuration file.
+
 ## Needed libraries
 
 In order to compile the C implementation of the indexer you need
@@ -37,4 +44,3 @@ libarchive and glib2. Take as reference your package manager manual.
 
   - libarchive (2.8.5-2 - http://libarchive.googlecode.com/)
   - glib2 (2.30.1-1 - http://www.gtk.org/)
-
