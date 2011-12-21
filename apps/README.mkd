@@ -1,0 +1,36 @@
+# Notes
+
+You can run the application in static or distributed way. There are two set of
+configuration files:
+
+- Distributed configuration set
+- Static configuration set
+
+## Distributed configuration set
+
+There are two template files:
+
+- `server-index.conf`: describing server side configuration
+- `client-index.conf`: describing client side configuration
+
+You can run the server with:
+
+  $ pmgr-server server-index.conf
+
+The same applies for the clients:
+
+  $ pmgr-client ri/indexer.py mynick client-index.conf
+
+## Static configuration set
+
+If you already have a DFS such as NFS or AFS you can simply use the static
+configuration file. The instructions for spawning the client/server are the
+same as the one given in the section above.
+
+Server spawning:
+
+  $ pmgr-server static.conf
+
+Client spawning:
+
+  $ pmgr-client ri/indexer.py mynick static.conf
