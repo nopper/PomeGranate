@@ -44,7 +44,7 @@ class Worker(Logger):
         elif use_dfs:
             dconf = conf['dfs-conf']
 
-            host = '%s:%d' % (conf['dsf-host'],
+            host = '%s:%d' % (conf['dfs-host'],
                               conf['dfs-startport'] + int(worker_id))
 
             self.datadir = os.path.join(

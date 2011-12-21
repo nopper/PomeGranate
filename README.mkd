@@ -133,6 +133,7 @@ that will be used by various parts of the application. The parameters are:
 The following parameters are related to the DFS module:
 
   - `dfs-enabled`: boolean indicating if DFS support will be used
+  - `dfs-host`: string indicating the IP on which the node will listen on
   - `dfs-startport`: integer indicating a TCP port. Every worker will listen
                      onto `startport` + `unique_worker_id`.
   - `dfs-conf`: a dictionary which include valid parameters for configuring
