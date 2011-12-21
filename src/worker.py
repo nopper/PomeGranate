@@ -17,7 +17,7 @@ from pomegranate.message import *
 from pomegranate.utils import Logger, load_module
 
 try:
-    from fsdfs.filesystem import Filesystem
+    from filesystem import Filesystem
     DFS_AVAILABLE = True
 except ImportError:
     DFS_AVAILABLE = False

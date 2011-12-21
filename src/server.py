@@ -17,7 +17,7 @@ from collections import defaultdict
 from httpserver import RequestHandler, Server
 
 try:
-    from fsdfs.filesystem import Filesystem
+    from filesystem import Filesystem
     DFS_AVAILABLE = True
 except ImportError:
     DFS_AVAILABLE = False
