@@ -5,14 +5,16 @@
 #include <fcntl.h>
 #include "utils.h"
 
-ExFile* create_file(const gchar *path, guint reducer_idx)
+ExFile* create_file(const gchar *path, guint master_id, guint worker_id,
+                    guint reducer_idx)
 {
     int fd, i;
     guint fid, nibble;
     ExFile *ret;
     gchar *fname;
     GString *filename = g_string_new("");
-    g_string_printf(filename, FILE_FORMAT, reducer_idx, 0);
+    g_string_printf(filename, FILE_FORMAT,
+                    reducer_idx, master_id, worker_id, 0);
 
     while (1)
     {

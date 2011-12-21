@@ -4,8 +4,8 @@
 #include <glib.h>
 
 #define ID_LENGTH 6
-#define ID_OFFSET 16
-#define FILE_FORMAT "output-r%06u-p%06u"
+#define ID_OFFSET 28
+#define FILE_FORMAT "output-r%06u-p%06u%06u%06u"
 
 /* Just an extended structure to keep track of the file name */
 struct _ExFile
@@ -26,9 +26,12 @@ typedef struct _ExFile ExFile;
  *   3. g_free(ex);
  *
  * \param path the path in which the file should be created
+ * \param master_id ID identifying the master
+ * \param worker_id ID identifying the worker
  * \param reducer_idx the reduce which the file refers to
  * \return an ExFile object that should eventually be freed
  */
-ExFile* create_file(const gchar *path, guint reducer_idx);
+ExFile* create_file(const gchar *path, guint master_id, guint worker_id,
+                    guint reducer_idx);
 
 #endif // UTILS_H

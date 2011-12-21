@@ -7,19 +7,15 @@ from pomegranate.master import Master, start_mapreduce
 class InputRI(Input):
     def __init__(self, fconf):
         super(InputRI, self).__init__(fconf, "InputRI")
-        self.input_path = self.conf["input-path"]
 
     def input(self):
-        files = os.listdir(self.input_path)
-
-        for id, file in enumerate(sorted(files)):
-            yield(os.path.join(self.input_path, file), id)
+        for id, file in enumerate(sorted(os.listdir(self.input_path))):
+            yield(os.path.join(self.input_prefix, file), id)
 
 class MasterRI(Master):
     def __init__(self, nick, fconf):
         super(MasterRI, self).__init__(nick, fconf)
 
-        self.input_path = self.conf["input-path"]
         self.num_reducer = int(self.conf["num-reducer"])
 
     def on_map_finished(self, msg):

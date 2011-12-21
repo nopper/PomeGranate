@@ -53,6 +53,9 @@ struct _Parser {
     GList *docids;    /*!< A linked list used in the final phase */
     GTree *word_tree; /*!< A balanced tree to store words in sorted way */
 
+    guint master_id; /*!< ID identifying the master */
+    guint worker_id; /*!< ID identifying the worker inside the master */
+
     guint num_reducers; /*!< Keep track of the number of reducers used */
     gchar *path;        /*!< Output path where files will be saved */
 };
@@ -60,12 +63,15 @@ struct _Parser {
 typedef struct _Parser Parser;
 
 /*! \brief Create a new Parser object. It may return NULL in case of errors
+ * \param master_id unique ID identifying the master
+ * \param worker_id unique ID identifying the worker
  * \param num_reducers the reducer which are present in the computation
  * \param input the path to the input file on which execute the map
  * \param path the directory path where all the files produced will be stored
  * \return a new Parser object
  */
-Parser* parser_new(guint num_reducers, const gchar *input, const gchar *path);
+Parser* parser_new(guint master_id, guint worker_id, guint num_reducers,
+                   const gchar *input, const gchar *path);
 
 
 /*! \brief Free the parser object previously allocated */

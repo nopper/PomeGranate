@@ -8,15 +8,16 @@
 
 #include "libreducer.h"
 
-FileReader* file_reader_new(const gchar *path, guint reducer_id, guint file_id)
+FileReader* file_reader_new(const gchar *path, guint reducer_id, gulong file_id)
 {
     FileReader *reader = g_new0(struct _FileReader, 1);
 
     GString *name = g_string_new("");
-    g_string_printf(name, "output-r%06d-p%06d", reducer_id, file_id);
+    g_string_printf(name, "output-r%06d-p%018lu", reducer_id, file_id);
 
     reader->filename = g_build_filename(path, name->str, NULL);
     reader->file = fopen(reader->filename, "rb");
+    reader->cur = NULL;
 
     g_string_free(name, TRUE);
 
@@ -58,6 +59,9 @@ gboolean file_reader_next(FileReader *reader, Posting *post)
         cur = g_new0(struct _Cursor, 1);
         cur->term = g_string_new("");
         read_next = TRUE;
+
+        if (!post->term)
+          post->term = cur->term;
     }
 
     if (read_next == TRUE) {
@@ -108,7 +112,8 @@ void file_reader_close(FileReader *reader)
     g_free(reader);
 }
 
-void reduce(const gchar *path, guint reducer_idx, guint nfile, guint *ids,
+void reduce(const gchar *path, guint master_id, guint worker_id,
+            guint reducer_idx, guint nfile, gulong *ids,
             reduce_callback callback, gpointer udata)
 {
     guint i, j, res, stop, iterations = 0;
@@ -116,6 +121,8 @@ void reduce(const gchar *path, guint reducer_idx, guint nfile, guint *ids,
     FileReader* readers[nfile], *reader;
 
     srand(time(NULL));
+
+    memset(&post, 0, sizeof(Posting) * nfile);
 
     for (i = 0; i < nfile; i++)
     {

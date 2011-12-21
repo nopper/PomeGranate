@@ -116,32 +116,36 @@ void callback(Posting *post, Context *ctx)
 int main(int argc, char *argv[])
 {
     guint i;
-    guint *ids;
+    gulong *ids;
     ExFile *file;
     Context *ctx;
     guint reducer_idx;
+    guint master_id;
+    guint worker_id;
 
-    printf("int: %d guint: %d\n", sizeof(unsigned int), sizeof(guint));
-
-    if (argc < 3)
+    if (argc < 5)
     {
-        printf("Usage: %s <path> <reduceidx> <int>..\n", argv[0]);
+        printf("Usage: %s <master-id> <worker-id> <path> "
+               "<reduceidx> <int>..\n", argv[0]);
         return -1;
     }
 
-    ids = g_new(guint, (argc - 3));
-    reducer_idx = (guint)atoi(argv[2]);
+    ids = g_new(gulong, (argc - 5));
 
-    for (i = 3; i < argc; i++)
-        *(ids + (i - 3)) = (guint)atoi(argv[i]);
+    master_id = (guint)atoi(argv[1]);
+    worker_id = (guint)atoi(argv[2]);
+    reducer_idx = (guint)atoi(argv[4]);
 
-    file = create_file(argv[1], reducer_idx);
+    for (i = 5; i < argc; i++)
+        *(ids + (i - 5)) = (gulong)atol(argv[i]);
+
+    file = create_file(argv[3], master_id, worker_id, reducer_idx);
     ctx = g_new0(struct _Context, 1);
 
     ctx->str = NULL;
     ctx->file = file->file;
 
-    reduce(argv[1], reducer_idx, argc - 3, ids,
+    reduce(argv[3], master_id, worker_id, reducer_idx, argc - 5, ids,
            (reduce_callback)callback, (gpointer *)ctx);
 
     /* The => is a marker in order to communicate with the python interpreter

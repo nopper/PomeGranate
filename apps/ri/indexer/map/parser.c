@@ -158,10 +158,12 @@ static void parser_flushdict(Parser *parser)
 
     for (i = 0; i < parser->num_reducers; i++)
     {
-        iter.files[i] = create_file(parser->path, i);
+        iter.files[i] = create_file(parser->path,
+                                    parser->master_id, parser->worker_id, i);
         iter.buffers[i] = (gchar *)g_malloc(BUFFSIZE);
 
-        setvbuf(iter.files[i]->file, (void *)iter.buffers[i], _IOFBF, BUFFSIZE);
+        setvbuf(iter.files[i]->file, (void *)iter.buffers[i],
+                _IOFBF, BUFFSIZE);
     }
 
     iter.num_reducers = parser->num_reducers;
@@ -285,8 +287,14 @@ static void parse_file(Parser *parser, guint docid,
     length = 0;
 
     started = FALSE;
+    gchar *str = g_utf8_normalize(buff, len, G_NORMALIZE_NFKD);
 
-    for(p = buff; pos < len; p = g_utf8_next_char(p), pos++)
+    if (!str)
+      return;
+
+    len = strlen(str);
+
+    for(p = str; pos < len; p = g_utf8_next_char(p), pos++)
     {
         c = g_utf8_get_char(p);
         type = get_word_type(c);
@@ -330,6 +338,8 @@ static void parse_file(Parser *parser, guint docid,
 
         word[length - 1] = c;
     }
+
+    g_free(str);
 }
 
 static inline guint extract_docid(const char *filename)
@@ -337,7 +347,8 @@ static inline guint extract_docid(const char *filename)
     return  (guint)atoi(filename + 4);
 }
 
-Parser* parser_new(guint num_reducers, const char *input, const char *path)
+Parser* parser_new(guint master_id, guint worker_id, guint num_reducers,
+                   const char *input, const char *path)
 {
     Parser *parser = NULL;
     struct archive *arch = archive_read_new();
@@ -353,6 +364,8 @@ Parser* parser_new(guint num_reducers, const char *input, const char *path)
     parser->input = arch;
     parser->path = g_strdup(path);
     parser->num_reducers = num_reducers;
+    parser->master_id = master_id;
+    parser->worker_id = worker_id;
     parser->stemmer = sb_stemmer_new("english", "UTF_8");
 
     /* This is pretty cumbersome. The 3rd and 4th parameters are callbacks to
