@@ -116,7 +116,7 @@ void callback(Posting *post, Context *ctx)
 int main(int argc, char *argv[])
 {
     guint i;
-    gulong *ids;
+    guint64 *ids;
     ExFile *file;
     Context *ctx;
     guint reducer_idx;
@@ -130,14 +130,14 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    ids = g_new(gulong, (argc - 5));
+    ids = g_new(guint64, (argc - 5));
 
     master_id = (guint)atoi(argv[1]);
     worker_id = (guint)atoi(argv[2]);
     reducer_idx = (guint)atoi(argv[4]);
 
     for (i = 5; i < argc; i++)
-        *(ids + (i - 5)) = (gulong)atol(argv[i]);
+        *(ids + (i - 5)) = g_ascii_strtoull(argv[i], NULL, 10);
 
     file = create_file(argv[3], master_id, worker_id, reducer_idx);
     ctx = g_new0(struct _Context, 1);

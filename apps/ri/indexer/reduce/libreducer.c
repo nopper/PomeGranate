@@ -8,12 +8,12 @@
 
 #include "libreducer.h"
 
-FileReader* file_reader_new(const gchar *path, guint reducer_id, gulong file_id)
+FileReader* file_reader_new(const gchar *path, guint reducer_id, guint64 file_id)
 {
     FileReader *reader = g_new0(struct _FileReader, 1);
 
     GString *name = g_string_new("");
-    g_string_printf(name, "output-r%06d-p%018lu", reducer_id, file_id);
+    g_string_printf(name, "output-r%06d-p%018llu", reducer_id, file_id);
 
     reader->filename = g_build_filename(path, name->str, NULL);
     reader->file = fopen(reader->filename, "rb");
@@ -113,7 +113,7 @@ void file_reader_close(FileReader *reader)
 }
 
 void reduce(const gchar *path, guint master_id, guint worker_id,
-            guint reducer_idx, guint nfile, gulong *ids,
+            guint reducer_idx, guint nfile, guint64 *ids,
             reduce_callback callback, gpointer udata)
 {
     guint i, j, res, stop, iterations = 0;

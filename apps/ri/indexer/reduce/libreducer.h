@@ -46,7 +46,7 @@ typedef struct _Posting Posting;
  *         or NULL if the file was not found
  */
 FileReader *file_reader_new(const gchar *path, guint reducer_id,
-                            gulong file_id);
+                            guint64 file_id);
 
 /*! \brief Advance the cursor of the FileReader object and update the post
  * pointer.
@@ -93,6 +93,6 @@ typedef void (*reduce_callback)(Posting *post, gpointer udata);
  * \param udata user-data pointer
  */
 void reduce(const gchar *path, guint master_id, guint worker_id, guint reducer_idx,
-            guint nfile, gulong *ids, reduce_callback callback, gpointer udata);
+            guint nfile, guint64 *ids, reduce_callback callback, gpointer udata);
 
 #endif
