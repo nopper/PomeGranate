@@ -388,7 +388,7 @@ class Handler(RequestHandler):
                 server.reduce_dict[nicks[pos]] = jobs
             else:
                 if len(files) == 1:
-                    server.info("Output file for %s => %s" % (nicks[pos], files[0]))
+                    server.retrieve_file(nicks[pos], reduce_idx, files[0])
                 server.reduce_dict[nicks[pos]] = None
 
             pos = (pos + 1) % maxnick
@@ -551,7 +551,7 @@ class Handler(RequestHandler):
             opos += 1
 
         if server.status.phase == server.status.PHASE_MERGE:
-            server.info("Output file for %s => %s" % (nick, tuple(to_add)))
+            server.retrieve_file(nick, reduce_idx, tuple(to_add))
 
         jobs.append(tuple(to_add))
 
@@ -819,6 +819,13 @@ class MasterServer(Server, Logger):
 
         if self.work_queue.use_dfs:
             self.work_queue.fs.stop()
+
+    def retrieve_file(self, nick, reduce_idx, file):
+        fid, fsize = file
+        fname = get_file_name(self.path, reduce_idx, fid)
+
+        self.info("Group %s produced %s [%d bytes] output file" % \
+                  (nick, fname, fsize))
 
     def on_group_died(self, nick, is_error):
         """

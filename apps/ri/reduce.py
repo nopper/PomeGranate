@@ -39,7 +39,7 @@ class ReducerRI(BaseReducer):
             fsize = int(fsize)
 
             results.insert(0, (get_id(fname), fsize))
-            self.vfs.push_local_file(fname)
+            self.vfs.push_local_file(fname, True)
             break
 
         return ((fsize, time.time() - start), results)

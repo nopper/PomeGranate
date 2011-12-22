@@ -156,13 +156,16 @@ class Worker(Logger):
 
         return (os.path.join(self.datadir, filename), fileid)
 
-    def push_local_file(self, fname):
+    def push_local_file(self, fname, push=False):
         if not self.use_dfs:
             return
 
         fname = os.path.join(self.output_prefix, fname)
         self.info("Pushing file '%s' into global DFS" % fname)
         self.fs.importFile(os.path.join(self.datadir, fname), fname)
+
+        if push:
+            self.fs.pushFile(fname)
 
 if __name__ == "__main__":
     # Arguments are: <configuration file> <master-id> <worker-id>
