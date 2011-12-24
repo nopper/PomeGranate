@@ -116,6 +116,8 @@ that will be used by various parts of the application. The parameters are:
                        can be reduced in a row.
   - `ping-interval`: integer indicating the interval in seconds between two
                      consecutive ping probes.
+  - `sleep-interval`: numeric indicating seconds between two consecuting
+                      work requests from the generic worker
   - `master-host`: string indicating the IP on which the server will bind to
   - `master-port`: integer indicating the port on which the server will
                    listen to

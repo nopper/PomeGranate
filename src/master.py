@@ -60,6 +60,7 @@ class Master(Logger, HTTPClient):
 
         self.nick = nick
         self.url = self.conf['master-url']
+        self.sleep_inter = self.conf['sleep-interval']
 
         # Generic lock to synchronize the access to the instance variables of
         # the object itself. Its use should be minimized.
@@ -260,7 +261,7 @@ class Master(Logger, HTTPClient):
                 self.num_map += 1
                 return self.map_queue.pop(0)
 
-        return WorkerStatus(TYPE_DUMMY, 0, 1)
+        return WorkerStatus(TYPE_DUMMY, 0, self.sleep_inter)
 
     def __push_work(self, wstatus):
         """
