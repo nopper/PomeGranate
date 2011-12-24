@@ -128,8 +128,10 @@ class Master(Logger, HTTPClient):
         # TODO: Ignore in the final phase
 
         if data < 0:
-            with self.kill_lock:
-                self.units_to_kill += abs(data)
+            data = abs(data)
+            if self.communicators.get_total() - data > 0:
+                with self.kill_lock:
+                    self.units_to_kill += data
         else:
             self.communicators.spawn_more(data)
 
@@ -140,7 +142,7 @@ class Master(Logger, HTTPClient):
 
     def _on_plz_die(self, nick, data):
         self.info("Exit message received. Sending termination messages")
-        self.communicators.send_all(Message(MSG_QUIT, 0, None))
+        self.communicators.send_all(Message(MSG_QUIT, 0, None), True)
 
         self.ev_finished.set()
         self.num_pending_request.release()
@@ -382,6 +384,10 @@ class Master(Logger, HTTPClient):
 
         while not self.__finished():
             idx, comm = self.communicators.receive()
+
+            if comm is None:
+                break
+
             # Here we wait until all the map are assigned and also all the
             # assigned reduce are finished.
             msg = comm.recv()
@@ -407,6 +413,10 @@ class Master(Logger, HTTPClient):
 
         while to_assign > 0:
             idx, comm = self.communicators.receive()
+
+            if comm is None:
+                break
+
             msg = comm.recv()
 
             if msg.command == MSG_AVAILABLE:
@@ -443,6 +453,10 @@ class Master(Logger, HTTPClient):
 
         while not self.ev_finished.is_set():
             idx, comm = self.communicators.receive()
+
+            if comm is None:
+                break
+
             msg = comm.recv()
 
             if msg.command == MSG_AVAILABLE:

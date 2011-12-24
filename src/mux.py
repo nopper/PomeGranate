@@ -64,14 +64,18 @@ class Muxer(object):
         with self.lock:
             return len(self.channels)
 
-    def send_all(self, msg):
+    def send_all(self, msg, remove=False):
         """
         Broadcast a given message to all the Intracommunicators
         @param msg the message you want to broadcast
+        @param remove True if after send we have to remove the channel
         """
         with self.lock:
             for comm in self.channels:
                 comm.send(msg, dest=0)
+
+            if remove:
+                self.channels = []
 
     def receive(self):
         """
@@ -85,7 +89,13 @@ class Muxer(object):
 
         while True:
             self.lock.acquire()
-            self.index = (self.index + 1) % (len(self.channels))
+            tot = len(self.channels)
+
+            if tot == 0:
+                self.lock.release()
+                return (-1, None)
+
+            self.index = (self.index + 1) % tot
             comm = self.channels[self.index]
 
             if comm.Iprobe():
