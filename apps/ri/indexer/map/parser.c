@@ -334,7 +334,7 @@ static void parse_file(Parser *parser, guint docid,
         return;
     }
 
-    for(p = str->str; pos < len; p = g_utf8_next_char(p), pos++)
+    for(p = str->str; p < (str->str + str->len); p = g_utf8_next_char(p), pos++)
     {
         c = g_utf8_get_char(p);
         type = get_word_type(c);
@@ -485,8 +485,6 @@ void parser_run(Parser *parser, guint limit)
     struct archive_entry *entry;
     guint docid;
     guint num_files = 0;
-
-    srand(time(NULL));
 
     /* Here we will just iterate over the archive file by extracting each file
      * member one by one in our buff buffer. Then the parse_file function will

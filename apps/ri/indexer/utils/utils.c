@@ -13,6 +13,7 @@ ExFile* create_file(const gchar *path, guint master_id, guint worker_id,
     ExFile *ret;
     gchar *fname;
     GString *filename = g_string_new("");
+    GRand *generator = g_rand_new();
     g_string_printf(filename, FILE_FORMAT,
                     reducer_idx, master_id, worker_id, 0);
 
@@ -22,7 +23,7 @@ ExFile* create_file(const gchar *path, guint master_id, guint worker_id,
 
         for (i = 0; i < ID_LENGTH; i++)
         {
-            nibble = rand() % 9;
+            nibble = g_rand_int(generator) % 9;
             filename->str[i + ID_OFFSET] = '1' + nibble;
 
             fid *= 10;
@@ -44,6 +45,7 @@ ExFile* create_file(const gchar *path, guint master_id, guint worker_id,
         ret->fname = g_strdup(filename->str);
 
         g_free(fname);
+        g_rand_free(generator);
         g_string_free(filename, TRUE);
 
         return ret;

@@ -120,8 +120,6 @@ void reduce(const gchar *path, guint master_id, guint worker_id,
     Posting post[nfile];
     FileReader* readers[nfile], *reader;
 
-    srand(time(NULL));
-
     memset(&post, 0, sizeof(Posting) * nfile);
 
     for (i = 0; i < nfile; i++)
