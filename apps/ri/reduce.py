@@ -22,7 +22,7 @@ class ReducerRI(BaseReducer):
         for fid in files:
             args.append(str(fid))
 
-        self.info("Executing %s" % str(args))
+        self.info("Executing %s" % str(' '.join(args)))
 
         start = time.time()
         process = subprocess.Popen(args, shell=False,
@@ -32,6 +32,7 @@ class ReducerRI(BaseReducer):
         results = files
 
         for line in process.stdout.readlines():
+            self.debug(">> %s" % line.strip())
             if not line.startswith("=> "):
                 continue
 

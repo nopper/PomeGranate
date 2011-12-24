@@ -22,7 +22,7 @@ class MapperRI(BaseMapper):
                 str(self.limit_size)]
 
         self.info("Processing archive ID=%d name=%s" % (archiveid, archive))
-        self.info("Executing %s" % str(args))
+        self.info("Executing %s" % str(' '.join(args)))
 
         totsize = 0
         start = time.time()
@@ -35,6 +35,7 @@ class MapperRI(BaseMapper):
         filenames = []
 
         for line in process.stdout.readlines():
+            self.debug(">> %s" % line.strip())
             if not line.startswith("=> "):
                 continue
 
@@ -49,7 +50,7 @@ class MapperRI(BaseMapper):
         self.info("Map finished. Result is %s" % str(results))
 
         for fname in filenames:
-            self.vfs.push_local_file(fname)
+            self.vfs.push_local_file(fname, True)
 
         return ((totsize, time.time() - start), results)
 
