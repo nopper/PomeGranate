@@ -124,6 +124,12 @@ class Worker(Logger):
         return getattr(module, fname)
 
     def pull_remote_files(self, reduce_idx, file_ids):
+        """
+        Pull a set of files from the global DFS
+        @param reduce_idx the reducer ID
+        @param file_ids an iterable object containing integers (they will be
+                        casted to int())
+        """
         if not self.use_dfs:
             return
 
@@ -141,22 +147,42 @@ class Worker(Logger):
             self.info("Worker worker_id=%d is downloading file '%s'" % \
                       (self.worker_id, fname))
 
-            downloaded = self.fs.downloadFile(fname)
+            downloaded = False
 
-            if not downloaded:
-                self.info("Failed to download %s" % fname)
+            while not downloaded:
+                try:
+                    downloaded = self.fs.downloadFile(fname)
+                except:
+                    self.info("Failed to download %s. Retrying in 2 sec" % fname)
+                    sleep(2)
 
     def pull_remote_file(self, inp):
+        """
+        Pull a file from the global DFS
+        @param inp a tuple in the form (file name, file id)
+        """
         filename, fileid = inp
 
         if self.use_dfs:
             self.info("Worker worker_id=%d is downloading file '%s'" % \
                       (self.worker_id, filename))
-            self.fs.downloadFile(filename)
+            downloaded = False
+
+            while not downloaded:
+                try:
+                    downloaded = self.fs.downloadFile(filename)
+                except:
+                    self.info("Failed to download %s. Retrying in 2 sec" % fname)
+                    sleep(2)
 
         return (os.path.join(self.datadir, filename), fileid)
 
     def push_local_file(self, fname, push=False):
+        """
+        Push a local file into the global DFS
+        @param fname the file to import
+        @param push if True the file will be pushed on the master.
+        """
         if not self.use_dfs:
             return
 
@@ -165,7 +191,8 @@ class Worker(Logger):
         self.fs.importFile(os.path.join(self.datadir, fname), fname)
 
         if push:
-            self.fs.pushFile(fname)
+            ret = self.fs.pushFile(fname)
+            self.info("Pushing returned %s" % str(ret))
 
 if __name__ == "__main__":
     # Arguments are: <configuration file> <master-id> <worker-id>

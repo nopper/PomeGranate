@@ -78,7 +78,6 @@ class Handler(RequestHandler):
             self.wfile.write(data)
         elif self.path == "/status":
             res = self.server.status.serialize()
-            #print res
             data = json.dumps(res)
 
             self.send_response(200)
@@ -252,11 +251,18 @@ class Handler(RequestHandler):
         merge partial results to produce the final output file.
         """
 
+        if nick in server.reduce_mark:
+            self.__send_data('try-later')
+            server.info("Sending try-later to %s. Already assigned" % nick)
+            return
+
         lst = server.reduce_dict[nick]
 
-        if lst is not None:
+        if lst:
             server.status.reduce_assigned += 1
-            server.info("Assigning merge work %s" % str(lst))
+            server.reduce_mark.add(nick)
+            server.info("Assigning merge work %s to %s" % \
+                        (str(lst), nick))
             self.__send_data('reduce-recovery', data=lst)
         else:
             # Ok probably we were just lucky. Do a final check in the
@@ -270,9 +276,13 @@ class Handler(RequestHandler):
                             (zombie, nick, str(lst)))
                 self.__send_data('reduce-recovery', data=lst)
                 server.status.reduce_assigned += 1
+                server.reduce_mark.add(nick)
+
+                if zombie in server.reduce_mark:
+                    server.reduce_mark.remove(zombie)
 
             except KeyError:
-                server.info("Sending termination message")
+                server.info("Sending termination message to %s" % nick)
                 self.__send_data('plz-die')
 
     def _assign_generic_work(self, server, nick):
@@ -314,12 +324,22 @@ class Handler(RequestHandler):
         # In case we finished everything and there's nothing to recover
         # compute the merge assignment for the merge phase.
         if completed and not need_recovery:
+            server.info("Group %s triggered the merge assignment" % nick)
             self._compute_merge_assignment()
 
             lst = server.reduce_dict[nick]
-            if lst is not None:
-                server.status.reduce_assigned += 1
-                self.__send_data('reduce-recovery', data=lst)
+
+            if lst:
+                if nick in server.reduce_mark:
+                    # Cannot happen but just to be sure since it is the group
+                    # which triggered the event :)
+                    self.__send_data('try-later')
+                else:
+                    server.reduce_mark.add(nick)
+                    server.status.reduce_assigned += 1
+                    server.info("Assigning merge work %s to %s" % \
+                                (str(lst), nick))
+                    self.__send_data('reduce-recovery', data=lst)
             else:
                 # Note here we can also keep the master alive without kill
                 server.info("Group %s unneeded for the merge" % nick)
@@ -328,14 +348,21 @@ class Handler(RequestHandler):
         # In case there are still jobs that needs recovery reassign to the
         # living requester.
         elif completed and need_recovery:
-            # This will converge slowly but better than nothing
-            zombie, lst = server.dead_reduce_dict.popitem()
-            server.info("Reassinging jobs from %s to %s -> %s" % \
-                        (zombie, nick, str(lst)))
+            if nick in server.reduce_mark:
+                self.__send_data('try-later')
+            else:
+                # This will converge slowly but better than nothing
+                zombie, lst = server.dead_reduce_dict.popitem()
+                server.info("Reassinging jobs from %s to %s -> %s" % \
+                            (zombie, nick, str(lst)))
 
-            server.reduce_dict[nick] = lst
-            server.status.reduce_assigned += 1
-            self.__send_data('reduce-recovery', data=lst)
+                if zombie in server.reduce_mark:
+                    server.reduce_mark.remove(zombie)
+
+                server.reduce_mark.add(nick)
+                server.reduce_dict[nick] = lst
+                server.status.reduce_assigned += 1
+                self.__send_data('reduce-recovery', data=lst)
 
         else:
             # If we are here the map jobs have been exhausthed and correctly
@@ -519,7 +546,13 @@ class Handler(RequestHandler):
         to_add     = data[1][0] # NB: This is a tuple (fid, fsize)
         to_delete  = data[1][1:] # NB: This is instead a sequence of [fid, ..]
 
+        if nick in server.reduce_mark:
+            server.reduce_mark.remove(nick)
+
         jobs = server.reduce_dict[nick][reduce_idx]
+
+        server.info("Received %s from %s" % (str(data), nick))
+        server.info("Jobs for the reducer %d is %s" % (reduce_idx, str(jobs)))
 
         opos = 0
         dpos = 0
@@ -535,8 +568,11 @@ class Handler(RequestHandler):
                     fname = get_file_name(server.path, reduce_idx, dfid)
 
                     if server.use_dfs:
-                        server.info("Nuking map file %s from DFS" % fname)
-                        server.work_queue.fs.nukeFile(fname)
+                        try:
+                            server.work_queue.fs.nukeFile(fname)
+                            server.info("Nuking map file %s from DFS" % fname)
+                        except:
+                            pass
                     else:
                         server.info("Removing map output file %s" % fname)
                         os.unlink(fname)
@@ -552,8 +588,9 @@ class Handler(RequestHandler):
 
         if server.status.phase == server.status.PHASE_MERGE:
             server.retrieve_file(nick, reduce_idx, tuple(to_add))
-
-        jobs.append(tuple(to_add))
+            server.reduce_dict[nick] = None
+        else:
+            jobs.append(tuple(to_add))
 
         server.status.reduce_assigned += 1
         server.status.reduce_completed += 1
@@ -664,7 +701,6 @@ class WorkQueue(object):
                             " distributed mode. Otherwise just toggle it "  \
                             "off from the configuration file")
         elif use_dfs:
-            print dfs_conf
             self.datadir = dfs_conf['datadir']
             self.fs = Filesystem(dfs_conf)
 
@@ -751,6 +787,7 @@ class MasterServer(Server, Logger):
         #   [
         #   ] => Reduce-1
         # ]
+        self.reduce_mark = set()
         self.reduce_dict = defaultdict(list)
         self.dead_reduce_dict = defaultdict(list)
 

@@ -505,13 +505,16 @@ class Master(Logger, HTTPClient):
         @return a WorkerStatus instance or None if a reduce is not required
         """
 
-        found = False
+        overflow = False
+        valid_found = False
         reduce_idx = 0
 
         num_files = 0
 
         with self.reduce_lock:
             for reduce_idx, reduce_list in enumerate(self.reducing_files):
+
+                # Skip already started reducers
                 if self.reduce_started[reduce_idx]:
                     continue
 
@@ -522,31 +525,31 @@ class Master(Logger, HTTPClient):
                         continue
 
                     if num_files >= self.threshold_nfile:
-                        found = True
+                        overflow = True
                         break
 
-                if found:
+                if num_files > 1:
+                    valid_found = True
                     break
+                else:
+                    num_files = 0
+                    overflow = False
+                    continue
 
-                if ignore_limits:
-                    found = True
-                    break
-
-                num_files = 0
-
-            if not found:
-                return None
-
+        if valid_found:
+            # The last valid reduce_idx will be our target
             files = self.reducing_files[reduce_idx]
             self.reducing_files[reduce_idx] = files[num_files:]
             assigned = files[:num_files]
 
-        files_id = map(lambda x: x[0], assigned)
+            files_id = map(lambda x: x[0], assigned)
 
-        if not files_id or len(files_id) == 1:
+            self.info("Files to reduce %s [overflow check: %s]" % \
+                     (str(files_id), str(overflow)))
+
+            return WorkerStatus(TYPE_REDUCE, reduce_idx, (reduce_idx, files_id))
+        else:
             return None
-
-        return WorkerStatus(TYPE_REDUCE, reduce_idx, (reduce_idx, files_id))
 
     ##########################################################################
     # Public functions

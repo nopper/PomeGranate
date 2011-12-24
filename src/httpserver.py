@@ -150,8 +150,7 @@ class RequestHandler(asynchat.async_chat,
             self.wfile = SocketStream(self.connection, self)
             self.copyfile(self.start_resp, self.wfile)
         except Exception, exc:
-            # FIXME please
-            raise exc
+            pass
 
     def copyfile(self, source, outputfile):
         """Copy all data between two file objects Set a big buffer size"""
