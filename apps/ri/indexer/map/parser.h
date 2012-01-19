@@ -34,24 +34,26 @@ typedef enum {
     WORD_IGNORE
 } WordType;
 
+struct _Posting {
+    guint docid;
+    guint occurrences;
+};
+
+typedef struct _Posting Posting;
+
 /*! \brief The Parser structure is used to keep track of the map function.
- *
- * The structure itself is straightforward and allows large memory reduction.
- * In fact we use an hashtable dict to relate words to nested hashtables. These
- * hashtables will relate docids to occurrences. In order to save memory the
- * keys of the dict are stored in a GTree object (which can be easily sorted
- * through a simple traversal), while docids keys are stored in a seperate
- * Hashtable which is used as a Set.
+ * All the words are stored in dict hash table. The dict maps a word to a GList
+ * of Postings. Every document is read sequentially and curr_words is used to
+ * keep track of the words inside that document. At the end the information
+ * collected will be merged inside the dict hashtable.
  */
 struct _Parser {
     struct archive *input;      /*!< The archive input file */
     struct sb_stemmer *stemmer; /*!< Stemmer */
 
-    GHashTable *dict;      /*!< The main hash table word -> table */
-    GHashTable *docid_set; /*!< A hashtable used as a set to reduce space */
-
-    GList *docids;    /*!< A linked list used in the final phase */
-    GTree *word_tree; /*!< A balanced tree to store words in sorted way */
+    GHashTable *dict;      /*!< The main hash table word -> GList (reversed) */
+    GHashTable *curr_words; /*!< A list containing words of the current document */
+    guint curr_docid;
 
     guint master_id; /*!< ID identifying the master */
     guint worker_id; /*!< ID identifying the worker inside the master */

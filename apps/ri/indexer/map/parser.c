@@ -13,13 +13,8 @@ struct _Iterator
     ExFile **files;      /*!< Array of files. They are totally num_reducers */
     gchar **buffers;     /*!< Array of buffers */
 
-    GList *docids;       /*!< A sorted list of documents ids */
-
     GHashTable *words;   /*!< The hashtable containing all words. It is
                           *   inherithed by the Parser object
-                          */
-    GHashTable *table;   /*!< The hashtable containing the current occurrences
-                          *   It goes from docid -> occurences
                           */
 };
 
@@ -72,30 +67,25 @@ static inline gint word_compare(const gchar *a, const gchar *b, gpointer data)
     return g_strcmp0(a, b);
 }
 
-static void parser_reset(Parser *parser)
+static void free_inner_lists(gchar *word, GList *lst, gpointer unused)
 {
-    g_hash_table_remove_all(parser->dict);
-    g_hash_table_remove_all(parser->docid_set);
-    g_tree_destroy(parser->word_tree);
-
-    parser->word_tree = g_tree_new_full(
-        (GCompareDataFunc)word_compare, NULL,
-        NULL, g_free
-    );
+    g_list_free_full(lst, (GDestroyNotify)g_free);
 }
 
-static void write_tuple(const guint *docid, Iterator *iter)
+static void parser_reset(Parser *parser)
 {
-    guint i;
-    const guint *occurr = g_hash_table_lookup(iter->table, docid);
+    g_hash_table_foreach(parser->dict, (GHFunc)free_inner_lists, NULL);
+    g_hash_table_remove_all(parser->dict);
+}
 
-    if (!occurr)
-        return;
+static void write_tuple(Posting *post, Iterator *iter)
+{
+    guint i = (post->docid % iter->num_reducers);
 
-    i = (*docid % iter->num_reducers);
+    fwrite(&post->docid, sizeof(guint), 1, iter->files[i]->file);
+    fwrite(&post->occurrences, sizeof(guint), 1, iter->files[i]->file);
 
-    fwrite(docid, sizeof(guint), 1, iter->files[i]->file);
-    fwrite(occurr, sizeof(guint), 1, iter->files[i]->file);
+    g_free(post);
 
     iter->counters[i] ++;
 }
@@ -107,13 +97,11 @@ static inline gint guint_compare(guint *a, guint *b)
     if (*a > *b) return 1;
 }
 
-static gboolean traverse_node(gchar *word, gchar *_, Iterator *iter)
+static gboolean traverse_list(gchar *word, Iterator *iter)
 {
     guint i;
     FILE *file;
     size_t len = strlen(word);
-
-    iter->table = g_hash_table_lookup(iter->words, word);
 
     /* Here we should do a doc-based partition */
 
@@ -130,7 +118,8 @@ static gboolean traverse_node(gchar *word, gchar *_, Iterator *iter)
         iter->counters[i] = 0;
     }
 
-    g_list_foreach(iter->docids, (GFunc)write_tuple, iter);
+    GList *list = g_list_reverse(g_hash_table_lookup(iter->words, word));
+    g_list_foreach(list, (GFunc)write_tuple, iter);
 
     for (i = 0; i < iter->num_reducers; i++)
     {
@@ -143,6 +132,9 @@ static gboolean traverse_node(gchar *word, gchar *_, Iterator *iter)
         fwrite((gchar []){'\n'}, sizeof(gchar), 1, file);
     }
 
+    g_list_free(list);
+    g_hash_table_remove(iter->words, word);
+
     return FALSE;
 }
 
@@ -151,6 +143,8 @@ static void parser_flushdict(Parser *parser)
     int i;
     Iterator iter;
 
+    iter.words = parser->dict;
+    iter.num_reducers = parser->num_reducers;
     iter.files = g_new0(ExFile *, parser->num_reducers);
     iter.buffers = g_new0(gchar *, parser->num_reducers);
     iter.markers = g_new0(glong, parser->num_reducers);
@@ -166,17 +160,12 @@ static void parser_flushdict(Parser *parser)
                 _IOFBF, BUFFSIZE);
     }
 
-    iter.num_reducers = parser->num_reducers;
-    iter.docids = g_hash_table_get_keys(parser->docid_set);
+    GList *sorted = g_list_sort(
+        g_hash_table_get_keys(parser->dict),
+        (GCompareFunc)g_strcmp0
+    );
 
-    printf("Sorting docids set.. ");
-    iter.docids = g_list_sort(iter.docids, (GCompareFunc)guint_compare);
-    printf("ok\n");
-
-    iter.words = parser->dict;
-
-    printf("Flushing dictionary %d\n", g_hash_table_size(parser->dict));
-    g_tree_foreach(parser->word_tree, (GTraverseFunc)traverse_node, &iter);
+    g_list_foreach(sorted, (GFunc)traverse_list, &iter);
 
     for (i = 0; i < parser->num_reducers; i++)
     {
@@ -190,68 +179,40 @@ static void parser_flushdict(Parser *parser)
         g_free(iter.buffers[i]);
     }
 
+    g_list_free(sorted);
+
     g_free(iter.files);
     g_free(iter.buffers);
     g_free(iter.markers);
     g_free(iter.counters);
-    g_list_free(iter.docids);
 
     parser_reset(parser);
 }
 
-static inline guint *get_or_create_docid(Parser *parser, guint docid)
+static void parser_add_docid_word(gchar *word, guint *occurr, Parser *parser)
 {
-    guint *docid_key = g_hash_table_lookup(parser->docid_set, &docid);
+    Posting *posting = g_new0(struct _Posting, 1);
+    posting->docid = parser->curr_docid;
+    posting->occurrences = *occurr;
 
-    if (!docid_key)
-    {
-        docid_key = g_new(guint, 1);
-        *docid_key = docid;
+    GList *lst = g_hash_table_lookup(parser->dict, word);
 
-        g_hash_table_insert(parser->docid_set, docid_key, docid_key);
-    }
-
-    return docid_key;
+    lst = g_list_prepend(lst, posting);
+    g_hash_table_replace(parser->dict, g_strdup(word), lst);
 }
 
-static void dict_push_new_word(Parser *parser, const guint docid,
-                               const char *word)
+static void parser_merge_batch(Parser *parser)
 {
-    /* First we have to check if the docid is already in the docid set */
-    gchar *word_key;
-    guint *docid_key;
-    guint *counter;
-    GHashTable *inner;
+    g_hash_table_foreach(parser->curr_words, (GHFunc)parser_add_docid_word, parser);
+    g_hash_table_destroy(parser->curr_words);
 
-    docid_key = get_or_create_docid(parser, docid);
-
-    /* Let's create the dictionary */
-    inner = g_hash_table_new_full(g_int_hash, g_int_equal, NULL, g_free);
-
-    counter = g_new(guint, 1);
-    *counter = 1;
-
-    word_key = g_strdup(word);
-
-    g_hash_table_insert(inner, docid_key, counter);
-    g_hash_table_insert(parser->dict, word_key, inner);
-
-    g_tree_insert(parser->word_tree, word_key, word_key);
+    parser->curr_words = NULL;
+    parser->curr_docid = 0;
 }
 
-static void parser_putword(Parser *parser, const guint docid,
-                           const char *word, glong bytes)
+static void parser_putword(Parser *parser, const char *word)
 {
-    guint *docid_key, *value;
-    GHashTable *inner = g_hash_table_lookup(parser->dict, word);
-
-    if (!inner)
-    {
-        dict_push_new_word(parser, docid, word);
-        return;
-    }
-
-    value = (guint *)g_hash_table_lookup(inner, &docid);
+    guint *value = (guint *)g_hash_table_lookup(parser->curr_words, word);
 
     if (value != NULL)
     {
@@ -259,12 +220,10 @@ static void parser_putword(Parser *parser, const guint docid,
         return;
     }
 
-    docid_key = get_or_create_docid(parser, docid);
-
     value = g_new(guint, 1);
     *value = 1;
 
-    g_hash_table_insert(inner, docid_key, value);
+    g_hash_table_insert(parser->curr_words, g_strdup(word), value);
 }
 
 static gboolean text_validate_utf8(const gchar *text, gssize text_len,
@@ -334,6 +293,12 @@ static void parse_file(Parser *parser, guint docid,
         return;
     }
 
+    parser->curr_docid = docid;
+    parser->curr_words = g_hash_table_new_full(
+        g_str_hash, g_str_equal,
+        g_free, g_free
+    );
+
     for(p = str->str; p < (str->str + str->len); p = g_utf8_next_char(p), pos++)
     {
         c = g_utf8_get_char(p);
@@ -351,8 +316,9 @@ static void parse_file(Parser *parser, guint docid,
                 if (utf8)
                 {
                     parser_putword(
-                        parser, docid,
-                        sb_stemmer_stem(parser->stemmer, utf8, bytes), bytes);
+                        parser,
+                        sb_stemmer_stem(parser->stemmer, utf8, bytes)
+                    );
 
                     g_free(utf8);
                 }
@@ -380,6 +346,7 @@ static void parse_file(Parser *parser, guint docid,
     }
 
     g_string_free(str, TRUE);
+    parser_merge_batch(parser);
 }
 
 static inline guint extract_docid(const char *filename)
@@ -408,30 +375,11 @@ Parser* parser_new(guint master_id, guint worker_id, guint num_reducers,
     parser->worker_id = worker_id;
     parser->stemmer = sb_stemmer_new("english", "UTF_8");
 
-    /* This is pretty cumbersome. The 3rd and 4th parameters are callbacks to
-     * manage disposition respectively of keys and values:
-     * - Destroying dict will cause g_hash_table_destroy to be called on all
-     *   the inner dicts. Keys are not destroyed!
-     *   \_ -> All the inner dict will only destroy the values of the dict
-     *         (occurrences in this case).
-     * - Destroying word_tree will destroy all the keys (terms) which are also
-     *   shared with the main dict hashtable.
-     * - Destroying docid_set will remove the keys (docids) shared with the
-     *   inner hashtables previously destroyed.
-     */
+    parser->curr_words = NULL;
+    parser->curr_docid = 0;
 
     parser->dict = g_hash_table_new_full(
         g_str_hash, g_str_equal,
-        NULL, (GDestroyNotify)g_hash_table_destroy
-    );
-
-    parser->word_tree = g_tree_new_full(
-        (GCompareDataFunc)word_compare, NULL,
-        NULL, g_free
-    );
-
-    parser->docid_set = g_hash_table_new_full(
-        g_int_hash, g_int_equal,
         g_free, NULL
     );
 
@@ -443,11 +391,7 @@ void parser_free(Parser *parser)
 {
     archive_read_finish(parser->input);
     sb_stemmer_delete(parser->stemmer);
-
     g_hash_table_destroy(parser->dict);
-    g_hash_table_destroy(parser->docid_set);
-    g_tree_destroy(parser->word_tree);
-
     g_free(parser->path);
     g_free(parser);
 }
