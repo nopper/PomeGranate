@@ -161,8 +161,8 @@ class ApplicationStatus(object):
 
         inputs = [self.map_assigned,
                   self.reduce_assigned,
-                  self.reduce_completed,
                   self.map_completed,
+                  self.reduce_completed,
                   self.map_faulted,
                   self.reduce_faulted,
                   self.map_assigned + self.reduce_assigned,
