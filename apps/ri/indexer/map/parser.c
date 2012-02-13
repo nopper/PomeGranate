@@ -69,7 +69,7 @@ static inline gint word_compare(const gchar *a, const gchar *b, gpointer data)
 
 static void free_inner_lists(gchar *word, GList *lst, gpointer unused)
 {
-    g_list_free_full(lst, (GDestroyNotify)g_free);
+    g_list_foreach(lst, (GFunc)g_free, NULL);
 }
 
 static void parser_reset(Parser *parser)
