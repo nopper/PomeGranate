@@ -285,6 +285,9 @@ class Handler(RequestHandler):
                 server.info("Sending termination message to %s" % nick)
                 self.__send_data('plz-die')
 
+            # The check is internal
+            server.print_results()
+
     def _assign_generic_work(self, server, nick):
         """
         The method is responsible to assign a generic (MAP or REDUCE) work
@@ -586,8 +589,10 @@ class Handler(RequestHandler):
                 dpos += 1
             opos += 1
 
+        # Execute it anyway. It will be buffered.
+        server.retrieve_file(nick, reduce_idx, tuple(to_add))
+
         if server.status.phase == server.status.PHASE_MERGE:
-            server.retrieve_file(nick, reduce_idx, tuple(to_add))
             server.reduce_dict[nick] = None
         else:
             jobs.append(tuple(to_add))
@@ -800,6 +805,13 @@ class MasterServer(Server, Logger):
         self.ping_interval = int(conf["ping-interval"])
         self.num_reducer = int(conf["num-reducer"])
 
+        # This will just keep track of the name of the files
+        self.reduce_files = []
+        self.results_printed = False
+
+        for _ in range(self.num_reducer):
+            self.reduce_files.append("N/A")
+
         # Load the input module and assing the generator to the work_queue
         module = load_module(conf["input-module"])
         cls = getattr(module, "Input", None)
@@ -860,9 +872,20 @@ class MasterServer(Server, Logger):
     def retrieve_file(self, nick, reduce_idx, file):
         fid, fsize = file
         fname = get_file_name(self.path, reduce_idx, fid)
+        self.reduce_files[reduce_idx] = (nick, fname, fsize)
 
-        self.info("Group %s produced %s [%d bytes] output file" % \
-                  (nick, fname, fsize))
+    def print_results(self):
+        if self.results_printed:
+            return
+
+        if not self.reduce_mark and not self.dead_reduce_dict and \
+           self.status.phase == self.status.PHASE_MERGE:
+
+            self.results_printed = True
+
+            for nick, fname, fsize in self.reduce_files:
+                self.info("Group %s produced %s [%d bytes] output file" % \
+                          (nick, fname, fsize))
 
     def on_group_died(self, nick, is_error):
         """

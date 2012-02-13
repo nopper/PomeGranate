@@ -543,7 +543,10 @@ class Master(Logger, HTTPClient):
                         break
 
                 if num_files > 1:
-                    valid_found = True
+                    # Try to fill as much as possible the queue of input files
+                    # up to threshold limit.
+                    if ignore_limits:
+                        valid_found = True
                     break
                 else:
                     num_files = 0
