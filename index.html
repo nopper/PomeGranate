@@ -1,0 +1,208 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Pomegranate by nopper</title>
+    
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>Pomegranate</h1>
+        <p>Fully fault tolerant MapReduce framework built on top of MPI, Python and HTTP</p>
+        <p class="view"><a href="https://github.com/nopper/PomeGranate">View the Project on GitHub <small>nopper/PomeGranate</small></a></p>
+        <ul>
+          <li><a href="https://github.com/nopper/PomeGranate/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/nopper/PomeGranate/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/nopper/PomeGranate">Fork On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <h1>What is PomeGranate</h1>
+
+<p>PomeGranate is just an experiment in order to provide a fault tolerant
+MapReduce framework built on top of MPI and the HTTP protocol, through
+the use of Python programming language.</p>
+
+<p>In the source tarball we also provide a simple application of the
+framework used to create a TF-IDF index of Wikipedia.</p>
+
+<h1>Requirements</h1>
+
+<p>In order to compile and succesfully run this application you need:</p>
+
+<ul>
+<li>A Python interpreter targeting 2.x series</li>
+<li>A C compiler preferably GNU GCC</li>
+<li>An MPI implementation.</li>
+</ul><p>The application was tested under:</p>
+
+<ul>
+<li>An Intel Core 2 (T7600) Linux machine with 3.1.0-x86_64 kernel</li>
+<li>Python 2.7.2</li>
+<li>gcc (GCC) 4.6.2</li>
+<li>mpich2 1.4-1</li>
+</ul><h2>Python requirements</h2>
+
+<p>In order to install the proper requirements for the Python interpreter I
+really suggest you to use virtualenv and pip utilities.</p>
+
+<ul>
+<li>
+<code>pip install mpi4py</code> (1.2.2 - used for coordinating workers)</li>
+<li>
+<code>pip install jinja2</code> (2.6 - used for the Web interface)</li>
+</ul><p>If you want you can optionally install the fsdfs module (fucking simple
+distributed filesystem) in order to get some performance boost in case
+you are using a slow distributed filesystem like NFS. To do it simply
+point your shell into <code>lib/fsdfs</code> and type <code>python setup.py install</code>.
+Of course you have to enable the specific toggle option in the json
+configuration file.</p>
+
+<h2>Needed libraries</h2>
+
+<p>In order to compile the C implementation of the indexer you need
+libarchive and glib2. Take as reference your package manager manual.</p>
+
+<ul>
+<li>libarchive (2.8.5-2 - <a href="http://libarchive.googlecode.com/">http://libarchive.googlecode.com/</a>)</li>
+<li>glib2 (2.30.1-1 - <a href="http://www.gtk.org/">http://www.gtk.org/</a>)</li>
+</ul><h2>Fetching the sources</h2>
+
+<p>In order to fetch the software with all the dependencies just type in your
+console:</p>
+
+<pre><code>$ git clone git://github.com/nopper/PomeGranate.git
+$ cd PomeGranate
+</code></pre>
+
+<h2>Installation</h2>
+
+<p>I strongly suggest you to use virtualenv in order to test PomeGranate without
+impacting your python installation globally:</p>
+
+<pre><code>$ virtualenv env
+$ . env/bin/activate
+New python executable in env/bin/python
+Installing setuptools............done.
+Installing pip...............done.
+$ python setup.py install
+[...]
+</code></pre>
+
+<h3>Installing FSDFS - Optional</h3>
+
+<p>In case you don't have a distributed FS like NFS or AFS you can simply use
+FSDFS which is supported by PomeGranate:</p>
+
+<pre><code>$ git submodule init
+$ git submodule update
+$ cd lib/fsdfs
+$ python setup.py install
+</code></pre>
+
+<h2>Running the default ri application</h2>
+
+<p>In the source distribution you will find a simple MapReduce application for
+Reverse Index creation (here comes the name). A part of the application is
+developed in C language. In order to build the mapper and the reducer
+components you need <code>make</code>, <code>gcc</code>, <code>glib-2.0</code>, <code>libarchive</code>:</p>
+
+<pre><code>$ cd apps/ri/indexer/
+$ make
+</code></pre>
+
+<p>The Makefile is hardcoded so if you are not able to get a clean build try
+to play a little bit with the parameters. After the build you should get
+two executables namely:</p>
+
+<ul>
+<li><code>apps/ri/indexer/map/mapper</code></li>
+<li><code>apps/ri/indexer/reduce/reducer</code></li>
+</ul><p>The absolute path to these executables should match the <code>map-executable</code>
+and <code>reduce-executable</code> parameters in the JSON configuration file. Another
+parameter you would like to change is <code>limit-size</code> an integer value which
+limits the maximum number of KB that the mapper will use to keep in RAM
+all the information before flushing all the data to an output file.</p>
+
+<h2>Configuration file</h2>
+
+<p>The configuration file is a simple JSON file that express various parameters
+that will be used by various parts of the application. The parameters are:</p>
+
+<ul>
+<li>
+<code>num-mapper</code>: integer indicating the number of mapper to use</li>
+<li>
+<code>num-reducer</code>: integer indicating the number of reducer to use</li>
+<li>
+<code>machine-file</code>: string indicating the machine file to use for deploying
+                workers through MPI process abstraction</li>
+<li>
+<code>main-module</code>: string indicating the Python main module to use</li>
+<li>
+<code>input-module</code>: string indicating the Python Input module to use</li>
+<li>
+<code>map-module</code>: string indicating the Python Map module to use</li>
+<li>
+<code>reduce-module</code>: string indicating the Python Reduce module to use</li>
+<li>
+<code>threshold-nfile</code>: integer indicating the maximum number of files that
+                   can be reduced in a row.</li>
+<li>
+<code>ping-interval</code>: integer indicating the interval in seconds between two
+                 consecutive ping probes.</li>
+<li>
+<code>sleep-interval</code>: numeric indicating seconds between two consecuting
+                  work requests from the generic worker</li>
+<li>
+<code>master-host</code>: string indicating the IP on which the server will bind to</li>
+<li>
+<code>master-port</code>: integer indicating the port on which the server will
+               listen to</li>
+<li>
+<code>master-url</code>: string indicating a URI in the form
+              <code>http://&lt;master-host&gt;:&lt;master-port</code>
+</li>
+<li>
+<code>datadir</code>: a string indicating the directory where all files (both
+           inputs and outputs) are be stored</li>
+<li>
+<code>input-prefix</code>: a string indicating a suffix for the datadir parameter.
+                All the input files should be located in
+                 <code>&lt;datadir&gt;/&lt;input-prefix&gt;</code>.</li>
+<li>
+<code>output-prefix</code>: a string indicating a suffix for the datadir parameter.
+                 All the output files will be stored inside
+                 <code>&lt;datadir&gt;/&lt;output-prefix&gt;</code>.</li>
+</ul><p>The following parameters are related to the DFS module:</p>
+
+<ul>
+<li>
+<code>dfs-enabled</code>: boolean indicating if DFS support will be used</li>
+<li>
+<code>dfs-host</code>: string indicating the IP on which the node will listen on</li>
+<li>
+<code>dfs-startport</code>: integer indicating a TCP port. Every worker will listen
+                 onto <code>startport</code> + <code>unique_worker_id</code>.</li>
+<li>
+<code>dfs-conf</code>: a dictionary which include valid parameters for configuring
+            FSDFS nodes.</li>
+</ul>
+      </section>
+      <footer>
+        <p>This project is maintained by <a href="https://github.com/nopper">nopper</a></p>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+      </footer>
+    </div>
+    <script src="javascripts/scale.fix.js"></script>
+    
+  </body>
+</html>
